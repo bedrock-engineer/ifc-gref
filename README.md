@@ -1,10 +1,18 @@
 # ts-poc
 
+## Vragen
+
+- Wanneer je een IFC2x3 upload, wat moet dan de IFC-versie zijn van het bestand dat je na georeferentie weer downloadt?  
+  IFC2x3 naar IFC4 conversie is out of scope. Is er een manier om MapConversion props toe te voegen aan een IFC2x3 file? OnTrack gasten vragen.
+- Welke hoogtes gebruikt Mapterhorn? EGM hoogtes?
+
+## Description
+
 TypeScript / React prototype of the IFC Georeferencer rewrite. See the
 parent repo's `CLAUDE.md` for the full architecture, and `docs/` for the
 specific decisions on web-ifc, large file handling, and testing.
 
-This folder is a standalone Vite project. It will eventually move to its
+This repo is a standalone Vite project. It will eventually move to its
 own repo (`ifcgref-web` or similar). For now it lives next to the Flask
 app for convenient context.
 
