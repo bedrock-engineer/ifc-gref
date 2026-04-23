@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { emitLog } from "../../../lib/log";
 import * as nominatim from "../../../lib/nominatim";
 import * as pdok from "../../../lib/pdok";
+import type { MapScope } from "./use-scope";
 
 export interface Suggestion {
   id: string;
@@ -32,7 +33,7 @@ interface UseAddressSuggestResult {
  */
 export function useAddressSuggest(
   query: string,
-  scope: Scope,
+  scope: MapScope,
 ): UseAddressSuggestResult {
   const trimmed = query.trim();
   const shouldSearch = trimmed.length >= MIN_QUERY_LEN;
@@ -98,7 +99,7 @@ export function useAddressSuggest(
  */
 export async function lookupPlace(
   id: string,
-  scope: Scope,
+  scope: MapScope,
   signal: AbortSignal,
 ): Promise<PlaceResult | null> {
   const result =

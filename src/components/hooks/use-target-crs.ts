@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type CrsDef, type CrsLookupState, lookupCrs } from "../../lib/crs";
+import { type CrsDef, lookupCrs } from "../../lib/crs";
 import type { HelmertParams } from "../../lib/helmert";
 import { emitLog } from "../../lib/log";
 import {

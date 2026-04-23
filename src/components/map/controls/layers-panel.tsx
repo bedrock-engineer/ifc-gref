@@ -7,13 +7,13 @@ import {
   type OverlayId,
 } from "../layers/registry";
 import type { LayerRegion } from "../layers/types";
-import type { Scope } from "./use-search";
+import type { MapScope } from "./use-scope";
 
 interface LayersPanelProps {
   basemap: BasemapId;
   overlays: Record<OverlayId, boolean>;
-  /** Current geographic scope of the map (tracks `useMapScope`). */
-  scope: Scope;
+  /** Current geographic scope of the map (tracks `useMapMapScope`). */
+  scope: MapScope;
   onBasemapChange: (id: BasemapId) => void;
   onOverlaysChange: (next: Record<OverlayId, boolean>) => void;
 }
@@ -33,7 +33,7 @@ const NL_ONLY_TITLE = "Only available in the Netherlands";
 // toggle — an already-selected NL layer stays enabled so the user can
 // always switch away (otherwise they'd be stuck with an undismissable
 // overlay until they pan back to NL).
-function isOutOfScope(region: LayerRegion, scope: Scope): boolean {
+function isOutOfMapScope(region: LayerRegion, scope: MapScope): boolean {
   return region === "nl" && scope === "world";
 }
 
@@ -58,16 +58,16 @@ export function LayersPanel({
       >
         <Label className={HEADING}>Basemap</Label>
         {BASEMAPS.map((b) => {
-          const outOfScope = isOutOfScope(b.region, scope);
+          const outOfMapScope = isOutOfMapScope(b.region, scope);
           const isActive = b.id === basemap;
           return (
             <RadioButton
               key={b.id}
               value={b.id}
-              isDisabled={outOfScope && !isActive}
+              isDisabled={outOfMapScope && !isActive}
               className={ROW}
             >
-              <span title={outOfScope ? NL_ONLY_TITLE : undefined}>
+              <span title={outOfMapScope ? NL_ONLY_TITLE : undefined}>
                 {b.label}
               </span>
             </RadioButton>
@@ -79,12 +79,12 @@ export function LayersPanel({
           <span className={HEADING}>Overlays</span>
           {OVERLAYS.map((o) => {
             const checked = Boolean(overlays[o.id]);
-            const outOfScope = isOutOfScope(o.region, scope);
+            const outOfMapScope = isOutOfMapScope(o.region, scope);
             return (
               <Checkbox
                 key={o.id}
                 isSelected={checked}
-                isDisabled={outOfScope && !checked}
+                isDisabled={outOfMapScope && !checked}
                 onChange={(isSelected) => {
                   onOverlaysChange({ ...overlays, [o.id]: isSelected });
                 }}
@@ -106,7 +106,7 @@ export function LayersPanel({
                     />
                   </svg>
                 </span>
-                <span title={outOfScope ? NL_ONLY_TITLE : undefined}>
+                <span title={outOfMapScope ? NL_ONLY_TITLE : undefined}>
                   {o.label}
                 </span>
               </Checkbox>

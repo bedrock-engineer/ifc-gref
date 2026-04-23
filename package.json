@@ -45,7 +45,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "epsg-index": "^2.0.0",
     "eslint": "^10.2.0",
-    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "eslint-plugin-unicorn": "^64.0.0",
     "globals": "^17.4.0",
