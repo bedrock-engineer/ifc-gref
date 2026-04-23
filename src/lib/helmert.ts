@@ -1,11 +1,70 @@
-import { ok, err, type Result } from 'neverthrow'
-import { levenbergMarquardt } from 'ml-levenberg-marquardt'
-import type {
-  HelmertParams,
-  HelmertError,
-  PointPair,
-  SurveySource,
-} from './types'
+import { ok, err, type Result } from "neverthrow";
+import { levenbergMarquardt } from "ml-levenberg-marquardt";
+import { z } from "zod";
+
+export interface XYZ {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface PointPair {
+  /** Local IFC coordinates */
+  local: XYZ;
+  target: XYZ;
+}
+
+export interface HelmertParams {
+  /** Scale factor (S) */
+  scale: number;
+  /** Rotation around Z in radians (θ) */
+  rotation: number;
+  /** Easting translation (E) */
+  easting: number;
+  /** Northing translation (N) */
+  northing: number;
+  /** Vertical translation / OrthogonalHeight (H) */
+  height: number;
+}
+
+export type SurveySource =
+  | { kind: "use-existing"; ifcSitePoint: PointPair }
+  | {
+      kind: "add-to-existing";
+      ifcSitePoint: PointPair;
+      userPoints: Array<PointPair>;
+    }
+  | { kind: "ignore-existing"; userPoints: Array<PointPair> };
+
+export type SurveyMode = SurveySource["kind"];
+
+/** UI-facing solve request: the mode plus whatever user-entered points the
+ * panel collected. The IfcSite point pair is materialised downstream (it
+ * requires projecting lat/lon through proj4, which we keep out of the UI). */
+export interface SolveRequest {
+  mode: SurveyMode;
+  userPoints: Array<PointPair>;
+}
+
+export type HelmertError =
+  | { kind: "no-points" }
+  | { kind: "collinear-points" }
+  | { kind: "solver-diverged" };
+
+/**
+ * The solver returns `parameterValues: number[]` — typed as possibly sparse
+ * and unbounded. We expect exactly 5 finite numbers (S, θ, E, N, H). Zod
+ * gives us one safeParse that checks arity, definedness, and finiteness in
+ * one shot, bridged to neverthrow below.
+ */
+const number = z.number();
+const SolverParametersSchema = z.tuple([
+  number,
+  number,
+  number,
+  number,
+  number,
+]);
 
 /**
  * 5-parameter Helmert transformation solver.
@@ -26,11 +85,11 @@ import type {
  * single-point branch in calculate()).
  */
 
-export type SolverContext = {
+export interface SolverContext {
   /** Scale fallback when there are not enough points to fit S (typically the unit conversion ratio in metres) */
-  unitScale: number
+  unitScale: number;
   /** Rotation fallback when there are not enough points (typically derived from IfcGeometricRepresentationContext.TrueNorth) */
-  trueNorthRotation: number
+  trueNorthRotation: number;
 }
 
 /**
@@ -38,27 +97,33 @@ export type SolverContext = {
  * CRS coordinate using a given set of parameters. Mirrors the equations
  * from app.py:460-477 (with no residual subtraction).
  */
-export function applyHelmert(
-  local: { x: number; y: number; z: number },
-  params: HelmertParams,
-): { x: number; y: number; z: number } {
-  const cos = Math.cos(params.rotation)
-  const sin = Math.sin(params.rotation)
+export function applyHelmert(local: XYZ, parameters: HelmertParams): XYZ {
+  const cos = Math.cos(parameters.rotation);
+  const sin = Math.sin(parameters.rotation);
   return {
-    x: params.scale * cos * local.x - params.scale * sin * local.y + params.easting,
-    y: params.scale * sin * local.x + params.scale * cos * local.y + params.northing,
-    z: params.scale * local.z + params.height,
-  }
+    x:
+      parameters.scale * cos * local.x -
+      parameters.scale * sin * local.y +
+      parameters.easting,
+    y:
+      parameters.scale * sin * local.x +
+      parameters.scale * cos * local.y +
+      parameters.northing,
+    z: parameters.scale * local.z + parameters.height,
+  };
 }
 
-export function buildPointList(source: SurveySource): PointPair[] {
+export function buildPointList(source: SurveySource): Array<PointPair> {
   switch (source.kind) {
-    case 'use-existing':
-      return [source.ifcSitePoint]
-    case 'add-to-existing':
-      return [source.ifcSitePoint, ...source.userPoints]
-    case 'ignore-existing':
-      return source.userPoints
+    case "use-existing": {
+      return [source.ifcSitePoint];
+    }
+    case "add-to-existing": {
+      return [source.ifcSitePoint, ...source.userPoints];
+    }
+    case "ignore-existing": {
+      return source.userPoints;
+    }
   }
 }
 
@@ -66,32 +131,33 @@ export function buildPointList(source: SurveySource): PointPair[] {
  * Unified solver entry point. Branches on point count, not on survey mode.
  */
 export function solveHelmert(
-  points: PointPair[],
+  points: Array<PointPair>,
   context: SolverContext,
 ): Result<HelmertParams, HelmertError> {
-  if (points.length === 0) {
-    return err({ kind: 'no-points' })
+  const [first, ...rest] = points;
+  if (!first) {
+    return err({ kind: "no-points" });
   }
-  if (points.length === 1) {
-    return ok(solveSinglePointFallback(points[0], context))
+  if (rest.length === 0) {
+    return ok(solveSinglePointFallback(first, context));
   }
-  return solveLeastSquares(points, context)
+  return solveLeastSquares([first, ...rest], context, first);
 }
 
 function solveSinglePointFallback(
   point: PointPair,
   context: SolverContext,
 ): HelmertParams {
-  const { unitScale: S, trueNorthRotation: theta } = context
-  const A = Math.cos(theta)
-  const B = Math.sin(theta)
+  const { unitScale: S, trueNorthRotation: theta } = context;
+  const A = Math.cos(theta);
+  const B = Math.sin(theta);
   return {
     scale: S,
     rotation: theta,
     easting: point.target.x - A * point.local.x * S + B * point.local.y * S,
     northing: point.target.y - B * point.local.x * S - A * point.local.y * S,
     height: point.target.z - point.local.z * S,
-  }
+  };
 }
 
 /**
@@ -103,33 +169,51 @@ function solveSinglePointFallback(
  * `index = i*3 + k`, where `k ∈ {0, 1, 2}` selects X', Y', or Z'.
  */
 function solveLeastSquares(
-  points: PointPair[],
+  points: Array<PointPair>,
   context: SolverContext,
+  anchor: PointPair,
 ): Result<HelmertParams, HelmertError> {
-  const xData: number[] = []
-  const yData: number[] = []
-  for (let i = 0; i < points.length; i++) {
-    const t = points[i].target
-    xData.push(i * 3, i * 3 + 1, i * 3 + 2)
-    yData.push(t.x, t.y, t.z)
+  const xData: Array<number> = [];
+  const yData: Array<number> = [];
+  for (const [index, point] of points.entries()) {
+    const t = point.target;
+    xData.push(index * 3, index * 3 + 1, index * 3 + 2);
+    yData.push(t.x, t.y, t.z);
   }
 
   // Use the single-point fallback as the initial guess (anchored on point 0).
-  const initial = solveSinglePointFallback(points[0], context)
+  const initial = solveSinglePointFallback(anchor, context);
 
-  const model = (params: number[]) => (x: number) => {
-    const [S, theta, E, N, H] = params
-    const i = Math.floor(x / 3)
-    const k = x % 3
-    const local = points[i].local
-    const cos = Math.cos(theta)
-    const sin = Math.sin(theta)
-    if (k === 0) return S * cos * local.x - S * sin * local.y + E
-    if (k === 1) return S * sin * local.x + S * cos * local.y + N
-    return S * local.z + H
-  }
+  const model = (parameters: Array<number>) => (x: number) => {
+    // L-M always calls this with the 5 parameters and indices from xData, so
+    // the defaults are unreachable — they exist only to satisfy
+    // noUncheckedIndexedAccess without a runtime guard.
+    const [
+      S = Number.NaN,
+      theta = Number.NaN,
+      E = Number.NaN,
+      N = Number.NaN,
+      H = Number.NaN,
+    ] = parameters;
+    const index = Math.floor(x / 3);
+    const k = x % 3;
+    const point = points[index];
+    if (!point) {
+      return Number.NaN;
+    }
+    const { local } = point;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    if (k === 0) {
+      return S * cos * local.x - S * sin * local.y + E;
+    }
+    if (k === 1) {
+      return S * sin * local.x + S * cos * local.y + N;
+    }
+    return S * local.z + H;
+  };
 
-  let result
+  let result;
   try {
     result = levenbergMarquardt({ x: xData, y: yData }, model, {
       initialValues: [
@@ -142,16 +226,15 @@ function solveLeastSquares(
       maxIterations: 200,
       damping: 1e-2,
       gradientDifference: 1e-6,
-    })
-  } catch (_e) {
-    return err({ kind: 'solver-diverged' })
+    });
+  } catch {
+    return err({ kind: "solver-diverged" });
   }
 
-  const [scale, rotation, easting, northing, height] = result.parameterValues
-  if (
-    ![scale, rotation, easting, northing, height].every((v) => Number.isFinite(v))
-  ) {
-    return err({ kind: 'solver-diverged' })
+  const parsed = SolverParametersSchema.safeParse(result.parameterValues);
+  if (!parsed.success) {
+    return err({ kind: "solver-diverged" });
   }
-  return ok({ scale, rotation, easting, northing, height })
+  const [scale, rotation, easting, northing, height] = parsed.data;
+  return ok({ scale, rotation, easting, northing, height });
 }

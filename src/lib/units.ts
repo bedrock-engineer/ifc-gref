@@ -1,5 +1,6 @@
 import { ok, err, type Result } from 'neverthrow'
-import type { UnitError } from './types'
+
+export interface UnitError { kind: 'unknown-unit'; name: string }
 
 /**
  * Length unit conversion. Maps IFC unit name strings to their conversion
