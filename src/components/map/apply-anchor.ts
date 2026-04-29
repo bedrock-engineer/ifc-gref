@@ -21,11 +21,14 @@ export function applyAnchor(
   activeCrs: CrsDef,
   map: MlMap,
   meshOrigin: XYZ,
-  ifcMetresPerUnit: number,
 ): void {
+  // Both meshOrigin (web-ifc auto-converts to metres) and parameters
+  // (canonical metres — see lib/helmert.ts) are in metres, so applyHelmert
+  // can be called directly. Output is metres in the CRS frame; the proj4
+  // boundary converts to CRS-native units internally.
   const projected = applyHelmert(meshOrigin, parameters);
   const result = transformProjectedToWgs84(
-    activeCrs.code,
+    activeCrs,
     projected.x,
     projected.y,
   );
@@ -41,19 +44,29 @@ export function applyAnchor(
     return;
   }
   const ll = result.value;
-  // Altitude we hand to the 3D layer is in METRES relative to the basemap
-  // surface, not sea level. MapLibre's camera at zoom 17+ sits only ~100m
-  // above the ground in world-space, so feeding it the absolute
-  // OrthogonalHeight (e.g. 293m for Luxembourg) puts the model behind the
-  // near plane. The Helmert height component fixes *horizontal* placement
-  // via the XY projection; vertically we just want the mesh centroid's
-  // offset above the IFC z=0 plane, converted from IFC units to metres —
-  // *not* via Helmert.scale, because scale maps IFC units → CRS map units
-  // (e.g. US feet) which would feed feet into MapLibre's metres-expecting
-  // altitude for a foot-based CRS.
-  const relativeAltitude = meshOrigin.z * ifcMetresPerUnit;
+  // MapLibre's MercatorCoordinate altitude is absolute (above the
+  // ellipsoid, NOT relative to terrain), and our basemap renders with
+  // Mapterhorn terrain on — so the camera target follows terrain
+  // elevation. For an elevated site (e.g. Madrid ~650m), passing
+  // altitude=meshOrigin.z (≈1.5m) puts the model below the terrain mesh
+  // and the depth test culls it.
+  //
+  // When the file carries OrthogonalHeight (parameters.height ≠ 0) we
+  // trust it as the absolute height in the target CRS's vertical datum.
+  // When it doesn't (IfcSite-only mode), fall back to a Mapterhorn
+  // sample at the anchor — for *render altitude only*, never written
+  // back into parameters.height. Vertical datums vary across Mapterhorn
+  // sources, so this isn't authoritative for georeferencing accuracy,
+  // but it's enough to land the model on terrain visually so the user
+  // can verify horizontal placement; they can then refine
+  // OrthogonalHeight by hand in the anchor card.
+  const baseAltitude =
+    parameters.height === 0
+      ? (map.queryTerrainElevation([ll.longitude, ll.latitude]) ?? 0)
+      : parameters.height;
+  const absoluteAltitude = baseAltitude + meshOrigin.z;
   layer.update(
-    { lng: ll.longitude, lat: ll.latitude, altitude: relativeAltitude },
+    { lng: ll.longitude, lat: ll.latitude, altitude: absoluteAltitude },
     parameters,
   );
   map.flyTo({
@@ -62,7 +75,8 @@ export function applyAnchor(
     pitch: 60,
     duration: 500,
   });
+  const altitudeSource = parameters.height === 0 ? "terrain" : "OrthogonalHeight";
   emitLog({
-    message: `3D model anchored at ${ll.longitude.toFixed(6)}, ${ll.latitude.toFixed(6)} (alt=${relativeAltitude.toFixed(2)}m, scale=${parameters.scale.toFixed(4)}, rot=${parameters.rotation.toFixed(4)} rad, meshOrigin=(${meshOrigin.x.toFixed(2)}, ${meshOrigin.y.toFixed(2)}, ${meshOrigin.z.toFixed(2)}))`,
+    message: `3D model anchored at ${ll.longitude.toFixed(6)}, ${ll.latitude.toFixed(6)} (alt=${absoluteAltitude.toFixed(2)}m via ${altitudeSource}, scale=${parameters.scale.toFixed(4)}, rot=${parameters.rotation.toFixed(4)} rad, meshOrigin=(${meshOrigin.x.toFixed(2)}, ${meshOrigin.y.toFixed(2)}, ${meshOrigin.z.toFixed(2)}))`,
   });
 }

@@ -4,10 +4,12 @@
  * workspace.tsx is left with state + JSX wiring.
  */
 
-import { err, ok, type Result } from "neverthrow";
+import { ResultAsync, err, errAsync, ok, okAsync, type Result } from "neverthrow";
 import {
   type CrsDef,
+  type CrsError,
   type TransformError,
+  lookupCrs,
   parseEpsgCode,
   transformProjectedToWgs84,
   transformWgs84ToProjected,
@@ -171,7 +173,7 @@ export function deriveEffectiveParameters(
     return null;
   }
   const projected = transformWgs84ToProjected({
-    code: activeCrs.code,
+    def: activeCrs,
     longitude: metadata.siteReference.longitude,
     latitude: metadata.siteReference.latitude,
     elevation: metadata.siteReference.elevation,
@@ -195,34 +197,48 @@ export function deriveEffectiveParameters(
  * between projections is typically <1° and most swaps share a vertical
  * datum.
  */
+export type ReprojectError =
+  | TransformError
+  | { kind: "lookup-failed"; cause: CrsError };
+
+/**
+ * Round-trip the anchor's planar position through WGS84 lat/lon so it
+ * lands at the same geographic point in the new CRS. Owns the proj4
+ * registration step — both source and target codes are looked up before
+ * the transform runs, so the caller doesn't need to pre-register.
+ */
 export function reprojectAnchorOnCrsChange(arguments_: {
   parameters: HelmertParams;
   previousEpsg: number;
   nextEpsg: number;
-}): Result<HelmertParams, TransformError> {
+}): ResultAsync<HelmertParams, ReprojectError> {
   const { parameters, previousEpsg, nextEpsg } = arguments_;
-  const ll = transformProjectedToWgs84(
-    previousEpsg,
-    parameters.easting,
-    parameters.northing,
-  );
-  if (ll.isErr()) {
-    return err(ll.error);
-  }
-  const projected = transformWgs84ToProjected({
-    code: nextEpsg,
-    longitude: ll.value.longitude,
-    latitude: ll.value.latitude,
-    elevation: parameters.height,
-  });
-  if (projected.isErr()) {
-    return err(projected.error);
-  }
-  return ok({
-    ...parameters,
-    easting: projected.value.x,
-    northing: projected.value.y,
-  });
+  return ResultAsync.combine([lookupCrs(previousEpsg), lookupCrs(nextEpsg)])
+    .mapErr<ReprojectError>((cause) => ({ kind: "lookup-failed", cause }))
+    .andThen(([previousDef, nextDef]) => {
+      const ll = transformProjectedToWgs84(
+        previousDef,
+        parameters.easting,
+        parameters.northing,
+      );
+      if (ll.isErr()) {
+        return errAsync<HelmertParams, ReprojectError>(ll.error);
+      }
+      const projected = transformWgs84ToProjected({
+        def: nextDef,
+        longitude: ll.value.longitude,
+        latitude: ll.value.latitude,
+        elevation: parameters.height,
+      });
+      if (projected.isErr()) {
+        return errAsync<HelmertParams, ReprojectError>(projected.error);
+      }
+      return okAsync<HelmertParams, ReprojectError>({
+        ...parameters,
+        easting: projected.value.x,
+        northing: projected.value.y,
+      });
+    });
 }
 
 export type SurveySourceError =
@@ -250,7 +266,7 @@ export function buildSurveySource(arguments_: {
     });
   }
   const projected = transformWgs84ToProjected({
-    code: activeCrs.code,
+    def: activeCrs,
     longitude: metadata.siteReference.longitude,
     latitude: metadata.siteReference.latitude,
     elevation: metadata.siteReference.elevation,
@@ -281,17 +297,17 @@ export function buildSurveySource(arguments_: {
  * fresh one (scale=1, rotation=TrueNorth) when the user hasn't solved yet.
  */
 export function applyPickedAnchor(arguments_: {
-  point: { longitude: number; latitude: number; elevation: number | null };
+  point: { longitude: number; latitude: number };
   metadata: IfcMetadata;
   activeCrs: CrsDef;
   base: HelmertParams | null;
 }): Result<HelmertParams, TransformError> {
   const { point, metadata, activeCrs, base } = arguments_;
   const projected = transformWgs84ToProjected({
-    code: activeCrs.code,
+    def: activeCrs,
     longitude: point.longitude,
     latitude: point.latitude,
-    elevation: point.elevation ?? 0,
+    elevation: 0,
   });
   if (projected.isErr()) {
     return err(projected.error);
@@ -301,7 +317,6 @@ export function applyPickedAnchor(arguments_: {
       ...base,
       easting: projected.value.x,
       northing: projected.value.y,
-      height: point.elevation ?? base.height,
     });
   }
   return ok({
@@ -309,6 +324,6 @@ export function applyPickedAnchor(arguments_: {
     rotation: trueNorthRotation(metadata),
     easting: projected.value.x,
     northing: projected.value.y,
-    height: point.elevation ?? 0,
+    height: 0,
   });
 }

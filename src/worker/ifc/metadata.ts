@@ -13,9 +13,10 @@ import {
 } from "web-ifc";
 import type { XYZ } from "../../lib/helmert";
 import { emitLog } from "../../lib/log";
+import { unitToMetres } from "../../lib/units";
 import { isValidLatLon } from "../../lib/validators";
 import { getApi } from "./api";
-import { type ExistingGeoref, readExistingGeoref } from "./read-georef";
+import { type ExistingGeoref, readExistingGeoref } from "./georef";
 import { type IfcSchema, parseSchema } from "./schema";
 import { dmsToDecimal, firstOf, rawValue } from "./shared";
 
@@ -37,6 +38,25 @@ export interface IfcMetadata {
   existingGeoref: ExistingGeoref | null;
   /** See GeorefRead.targetCrsHint. */
   targetCrsHint: string | null;
+  /** See GeorefRead.verticalDatumHint. */
+  verticalDatumHint: string | null;
+}
+
+/**
+ * Worker-side unit boundary. The codebase-wide canonical is metres (see
+ * `lib/helmert.ts`); every IfcLengthMeasure-typed value read by this module
+ * is multiplied by this factor exactly once, here. The inverse multiplier
+ * is applied symmetrically by the write path (`writeMapConversion`).
+ * Unknown units fall back to 1.
+ */
+export function deriveIfcMetresPerUnit(
+  ifcAPI: IfcAPI,
+  modelID: number,
+): number {
+  const project = firstOf(ifcAPI, modelID, IFCPROJECT);
+  const lengthUnit = readLengthUnit(ifcAPI, modelID, project);
+  const result = unitToMetres(lengthUnit);
+  return result.isOk() ? result.value : 1;
 }
 
 export async function readMetadata(modelID: number): Promise<IfcMetadata> {
@@ -45,16 +65,20 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
 
   const site = firstOf(ifcAPI, modelID, IFCSITE);
   const project = firstOf(ifcAPI, modelID, IFCPROJECT);
+  const lengthUnit = readLengthUnit(ifcAPI, modelID, project);
+  const lengthUnitMetres = unitToMetres(lengthUnit);
+  const ifcMetresPerUnit = lengthUnitMetres.isOk() ? lengthUnitMetres.value : 1;
 
-  const georef = readExistingGeoref(ifcAPI, modelID, schema);
+  const georef = readExistingGeoref(ifcAPI, modelID, schema, ifcMetresPerUnit);
   const metadata: IfcMetadata = {
     schema,
-    siteReference: readSiteReference(site),
-    localOrigin: readLocalOrigin(site),
-    lengthUnit: readLengthUnit(ifcAPI, modelID, project),
+    siteReference: readSiteReference(site, ifcMetresPerUnit),
+    localOrigin: readLocalOrigin(site, ifcMetresPerUnit),
+    lengthUnit,
     trueNorth: readTrueNorth(ifcAPI, modelID, project),
     existingGeoref: georef.existingGeoref,
     targetCrsHint: georef.targetCrsHint,
+    verticalDatumHint: georef.verticalDatumHint,
   };
 
   emitLog({
@@ -71,21 +95,22 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
 
 function readSiteReference(
   site: any,
+  ifcMetresPerUnit: number,
 ): { latitude: number; longitude: number; elevation: number } | null {
   if (!site) {
     return null;
   }
-  
+
   const lat = dmsToDecimal(site.RefLatitude);
   const lon = dmsToDecimal(site.RefLongitude);
   if (lat == null || lon == null || !isValidLatLon(lat, lon)) {
     return null;
   }
-  const elev = Number(rawValue(site.RefElevation) ?? 0);
+  const elev = Number(rawValue(site.RefElevation) ?? 0) * ifcMetresPerUnit;
   return { latitude: lat, longitude: lon, elevation: elev };
 }
 
-function readLocalOrigin(site: any): XYZ | null {
+function readLocalOrigin(site: any, ifcMetresPerUnit: number): XYZ | null {
   if (!site) {
     return null;
   }
@@ -99,9 +124,9 @@ function readLocalOrigin(site: any): XYZ | null {
     return null;
   }
   return {
-    x: Number(rawValue(coords[0])),
-    y: Number(rawValue(coords[1])),
-    z: Number(rawValue(coords[2])),
+    x: Number(rawValue(coords[0])) * ifcMetresPerUnit,
+    y: Number(rawValue(coords[1])) * ifcMetresPerUnit,
+    z: Number(rawValue(coords[2])) * ifcMetresPerUnit,
   };
 }
 
@@ -113,17 +138,24 @@ function readLengthUnit(ifcAPI: IfcAPI, modelID: number, project: any): string {
     return "METRE";
   }
   for (const unit of assignment.Units) {
-    if (unit?.UnitType !== "LENGTHUNIT") {
+    // UnitType is also enum-wrapped in newer web-ifc versions, so unwrap
+    // before comparing — otherwise `{type, value: "LENGTHUNIT"} !== "LENGTHUNIT"`
+    // skips every unit and we fall through to the METRE fallback.
+    if (rawValue(unit?.UnitType) !== "LENGTHUNIT") {
       continue;
     }
-    // IfcSIUnit: combine optional Prefix + Name -> e.g. MILLI + METRE -> MILLIMETRE
+    // IfcSIUnit: combine optional Prefix + Name -> e.g. MILLI + METRE -> MILLIMETRE.
+    // web-ifc wraps enums as `{type, value}` — without rawValue we'd get
+    // `[object Object][object Object]` and fall through to METRE.
     if (unit.Name) {
-      const prefix = unit.Prefix ?? "";
-      return `${prefix}${unit.Name}`;
+      const prefix = rawValue(unit.Prefix) ?? "";
+      const name = rawValue(unit.Name) ?? "";
+      return `${String(prefix)}${String(name)}`;
     }
-    // IfcConversionBasedUnit: use Name directly
-    if (typeof unit.Name === "string") {
-      return unit.Name;
+    // IfcConversionBasedUnit: use Name directly.
+    const name = rawValue(unit.Name);
+    if (typeof name === "string") {
+      return name;
     }
   }
   return "METRE";

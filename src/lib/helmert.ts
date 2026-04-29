@@ -2,6 +2,25 @@ import { ok, err, type Result } from "neverthrow";
 import { levenbergMarquardt } from "ml-levenberg-marquardt";
 import { z } from "zod";
 
+/**
+ * # Unit policy
+ *
+ * `HelmertParams` and every `XYZ` consumed/produced by `applyHelmert` and
+ * `solveHelmert` are in **metres**. The codebase normalises at two
+ * boundaries:
+ *
+ * 1. **Worker read boundary** (`worker/ifc/metadata.ts`) — every
+ *    IfcLengthMeasure-typed value (Eastings/Northings/OrthogonalHeight,
+ *    IfcSite.RefElevation, ObjectPlacement.Location coords) is multiplied
+ *    by `ifcMetresPerUnit` once.
+ * 2. **proj4 boundary** (`lib/crs-transform.ts`) — metres ↔ CRS-native
+ *    units (×`crsMetresPerUnit` / ÷). Identity for metric CRS.
+ *
+ * As a consequence, `parameters.scale` is a **dimensionless** real Helmert
+ * scale factor — typically 1.0. It is *not* a unit-conversion ratio.
+ * `applyHelmert(local_metres, params_metres) → output_metres`.
+ */
+
 export interface XYZ {
   x: number;
   y: number;
@@ -86,8 +105,6 @@ const SolverParametersSchema = z.tuple([
  */
 
 export interface SolverContext {
-  /** Scale fallback when there are not enough points to fit S (typically the unit conversion ratio in metres) */
-  unitScale: number;
   /** Rotation fallback when there are not enough points (typically derived from IfcGeometricRepresentationContext.TrueNorth) */
   trueNorthRotation: number;
 }
@@ -148,7 +165,11 @@ function solveSinglePointFallback(
   point: PointPair,
   context: SolverContext,
 ): HelmertParams {
-  const { unitScale: S, trueNorthRotation: theta } = context;
+  // Single-point branch can't fit a real scale factor — both local and
+  // target are already in metres post-normalisation, so identity scale is
+  // the natural choice. Multi-point fits will refine if needed.
+  const S = 1;
+  const theta = context.trueNorthRotation;
   const A = Math.cos(theta);
   const B = Math.sin(theta);
   return {

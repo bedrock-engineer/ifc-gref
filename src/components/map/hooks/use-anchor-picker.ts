@@ -4,16 +4,21 @@ import { type RefObject, useEffect } from "react";
 export interface PickedAnchor {
   longitude: number;
   latitude: number;
-  /** Elevation sampled from the terrain source; null if unavailable. */
-  elevation: number | null;
 }
 
 /**
  * While `isPicking` is true, swap the canvas cursor to a crosshair, arm a
- * one-shot click listener that emits the clicked lng/lat + terrain elevation,
- * and listen for Escape to let the user back out. The caller is expected to
- * flip `isPicking` back to false in response to either callback, which
- * triggers the cleanup path.
+ * one-shot click listener that emits the clicked lng/lat, and listen for
+ * Escape to let the user back out. The caller is expected to flip `isPicking`
+ * back to false in response to either callback, which triggers the cleanup
+ * path.
+ *
+ * Height is intentionally not sampled from the terrain DEM. Mapterhorn
+ * stitches together different DEMs by region (AHN/NAP over NL, SRTM-EGM96
+ * elsewhere, etc.), so the value's vertical datum varies and we have no
+ * reliable way to convert it into whatever vertical datum the user picked
+ * (proj4js doesn't ship geoid grids). Users enter `OrthogonalHeight`
+ * directly in the anchor card.
  */
 export function useAnchorPicker(
   mapRef: RefObject<MlMap | null>,
@@ -36,11 +41,7 @@ export function useAnchorPicker(
 
     const clickHandler = (event: MapMouseEvent) => {
       const { lng, lat } = event.lngLat;
-      // queryTerrainElevation returns null when terrain isn't set up or the
-      // tile isn't loaded yet. We pass that through so the caller can decide
-      // whether to keep the existing height.
-      const elevation = map.queryTerrainElevation(event.lngLat) ?? null;
-      onPick({ longitude: lng, latitude: lat, elevation });
+      onPick({ longitude: lng, latitude: lat });
     };
     const keyHandler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {

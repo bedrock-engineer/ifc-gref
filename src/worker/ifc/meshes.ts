@@ -17,6 +17,16 @@ import { getApi } from "./api";
  */
 export interface MeshExtract {
   positions: Float32Array;
+  /**
+   * Per-vertex normals from web-ifc, transformed by the rotation portion of
+   * `placed.flatTransformation` and put into the same Z-up frame as positions.
+   * web-ifc emits face-flat normals at hard edges (duplicated vertices) and
+   * smooth normals on curved surfaces — preserving them keeps architectural
+   * edges crisp in Lambert shading. Recomputing via `computeVertexNormals()`
+   * would smooth-average across shared corners and turn every wall/slab seam
+   * into a soft gradient.
+   */
+  normals: Float32Array;
   indices: Uint32Array;
   color: [number, number, number, number];
   /** IfcSpace volumes render semi-transparent so rooms don't occlude each other. */
@@ -101,9 +111,9 @@ export async function extractMeshes(
       );
 
       // web-ifc vertex stride: [x, y, z, nx, ny, nz] interleaved (6 floats).
-      // Strip normals (Three.js will recompute flat normals cheaply) and bake
-      // placed.flatTransformation into positions so the main thread doesn't
-      // need a per-mesh matrix.
+      // We bake placed.flatTransformation into positions and rotate normals
+      // by its 3×3 rotation portion (no translation), so the main thread
+      // doesn't need a per-mesh matrix.
       //
       // web-ifc applies a default rotateX(-π/2) so its output is Y-up
       // (mesh = (IFC_X, IFC_Z, -IFC_Y)). We undo that here so everything
@@ -120,6 +130,7 @@ export async function extractMeshes(
 
       const vertexCount = verts.length / 6;
       const positions = new Float32Array(vertexCount * 3);
+      const normals = new Float32Array(vertexCount * 3);
       for (let index = 0; index < vertexCount; index++) {
         // Per-vertex reads into a Float32Array of unknown length. The stride
         // invariant (length % 6 === 0, index < vertexCount) isn't visible to
@@ -129,6 +140,9 @@ export async function extractMeshes(
         const x = verts[index * 6]!;
         const y = verts[index * 6 + 1]!;
         const z = verts[index * 6 + 2]!;
+        const nx = verts[index * 6 + 3]!;
+        const ny = verts[index * 6 + 4]!;
+        const nz = verts[index * 6 + 5]!;
         /* eslint-enable @typescript-eslint/no-non-null-assertion */
         const mx = m0 * x + m4 * y + m8 * z + m12;
         const my = m1 * x + m5 * y + m9 * z + m13;
@@ -136,6 +150,25 @@ export async function extractMeshes(
         positions[index * 3] = mx; // IFC_X = mesh_X (east)
         positions[index * 3 + 1] = -mz; // IFC_Y = -mesh_Z (north)
         positions[index * 3 + 2] = my; // IFC_Z = mesh_Y (up)
+
+        // Normals get the 3×3 rotation only — no translation. IFC placements
+        // are typically rigid (orthonormal rotation + uniform scale at most),
+        // so the inverse-transpose simplifies to the same matrix; we
+        // renormalise below to absorb any uniform-scale factor. Then apply
+        // the same Y/Z swap as positions to land in IFC-native Z-up.
+        const mnx = m0 * nx + m4 * ny + m8 * nz;
+        const mny = m1 * nx + m5 * ny + m9 * nz;
+        const mnz = m2 * nx + m6 * ny + m10 * nz;
+        const swappedX = mnx;
+        const swappedY = -mnz;
+        const swappedZ = mny;
+        const length = Math.hypot(swappedX, swappedY, swappedZ);
+        // Degenerate normals (zero-length) get a sentinel +Z; Three.js will
+        // shade them as if facing up, which is far less jarring than NaNs.
+        const inv = length > 1e-8 ? 1 / length : 0;
+        normals[index * 3] = swappedX * inv;
+        normals[index * 3 + 1] = swappedY * inv;
+        normals[index * 3 + 2] = length > 1e-8 ? swappedZ * inv : 1;
       }
 
       // Copy indices into a fresh Uint32Array backed by its own buffer so
@@ -147,6 +180,7 @@ export async function extractMeshes(
       const c = placed.color;
       out.push({
         positions,
+        normals,
         indices: indexOut,
         color: [c.x, c.y, c.z, c.w],
         isSpace,

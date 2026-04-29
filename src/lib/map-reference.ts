@@ -6,6 +6,7 @@ import type { IfcMetadata } from "../worker/ifc";
 export type DeriveMapReferenceError =
   | { kind: "no-site-reference-and-no-georef" }
   | { kind: "crs-not-ready" }
+  | { kind: "site-reference-outside-crs"; lat: number; lon: number; crsCode: number }
   | TransformError;
 
 /**
@@ -19,6 +20,9 @@ export type DeriveMapReferenceError =
  * 1. IfcMapConversion + local origin → Helmert forward + reverse-project
  *    through `activeCrs.code`. LoGeoRef 50, authoritative when present.
  * 2. IfcSite RefLatitude/RefLongitude → use directly. LoGeoRef 20.
+ *    Validated against `activeCrs.bbox` so a stale geocoded site reference
+ *    in the wrong country (seen in Revit-style placeholder files) doesn't
+ *    quietly fly the camera somewhere absurd.
  *
  * We deliberately do NOT fall back to the site reference when a
  * MapConversion exists but the target CRS hasn't resolved yet — the site
@@ -38,13 +42,41 @@ export function deriveMapReference(
       metadata.localOrigin,
       metadata.existingGeoref.helmert,
     );
-    return transformProjectedToWgs84(activeCrs.code, projected.x, projected.y);
+    return transformProjectedToWgs84(activeCrs, projected.x, projected.y);
   }
   if (metadata.siteReference) {
-    return ok({
-      latitude: metadata.siteReference.latitude,
-      longitude: metadata.siteReference.longitude,
-    });
+    const { latitude, longitude } = metadata.siteReference;
+    // If we know the CRS's area of use, refuse a site reference that
+    // sits outside it — that's a sign the IfcSite RefLat/RefLon is a
+    // stale placeholder, and flying the map to whatever bogus place it
+    // names is more confusing than admitting we don't know where the
+    // file belongs. (Symmetric with the bbox guard in
+    // transformWgs84ToProjected.)
+    if (activeCrs && !isWithinBboxLoose(longitude, latitude, activeCrs)) {
+      return err({
+        kind: "site-reference-outside-crs",
+        lat: latitude,
+        lon: longitude,
+        crsCode: activeCrs.code,
+      });
+    }
+    return ok({ latitude, longitude });
   }
   return err({ kind: "no-site-reference-and-no-georef" });
+}
+
+function isWithinBboxLoose(
+  longitude: number,
+  latitude: number,
+  def: CrsDef,
+): boolean {
+  if (!def.bbox) {return true;}
+  const [north, west, south, east] = def.bbox;
+  const slack = 0.5;
+  return (
+    longitude >= west - slack
+    && longitude <= east + slack
+    && latitude >= south - slack
+    && latitude <= north + slack
+  );
 }

@@ -22,7 +22,7 @@ export type Stage =
 
 export default function App() {
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
-
+  console.log("App", { stage });
   // Race the ~500 KB CRS manifest fetch against the first WASM load / IFC
   // parse so `lookupCrs` is hot by the time the user drops a file.
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function App() {
         status: "Extracting metadata…",
         fraction: null,
       });
-      
+
       const metadata = await ifc.readMetadata();
 
       if (metadata.existingGeoref) {

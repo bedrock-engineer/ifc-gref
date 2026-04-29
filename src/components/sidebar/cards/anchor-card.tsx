@@ -1,4 +1,4 @@
-import { Button } from "react-aria-components";
+import { Button } from "../../button";
 import type { HelmertParams } from "../../../lib/helmert";
 import { NumberField } from "../number-field";
 import { ProvenanceBadge, type Provenance } from "../provenance-badge";
@@ -8,6 +8,12 @@ interface AnchorCardProps {
   provenance: Provenance;
   isPicking: boolean;
   canResetToFile: boolean;
+  /**
+   * If non-null, the map-click pick is disabled because committing a
+   * WGS84-derived value through degraded transforms would produce a
+   * ~170 m–wrong survey point. See docs/crs-datum-grids.md (Q11).
+   */
+  pickBlockedReason?: string | null;
   onEdit: (next: HelmertParams) => void;
   onStartPick: () => void;
   onCancelPick: () => void;
@@ -19,12 +25,14 @@ export function AnchorCard({
   provenance,
   isPicking,
   canResetToFile,
+  pickBlockedReason,
   onEdit,
   onStartPick,
   onCancelPick,
   onResetToFile,
 }: AnchorCardProps) {
   const hasParams = parameters !== null;
+  const pickDisabled = pickBlockedReason != null;
 
   function updateEasting(value: number) {
     if (!parameters) {
@@ -76,7 +84,7 @@ export function AnchorCard({
           }}
         />
         <NumberField
-          label="OrthogonalHeight"
+          label="Orthogonal Height"
           value={parameters?.height ?? null}
           onChange={updateHeight}
           isDisabled={!hasParams}
@@ -92,23 +100,30 @@ export function AnchorCard({
       <div className="flex gap-2">
         {isPicking ? (
           <Button
+            variant="warning"
+            size="sm"
             onPress={onCancelPick}
-            className="flex-1 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 outline-none hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-amber-500"
+            className="flex-1"
           >
             Cancel pick
           </Button>
         ) : (
           <Button
+            variant="secondary"
+            size="sm"
             onPress={onStartPick}
-            className="flex-1 rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-500 disabled:opacity-50"
+            isDisabled={pickDisabled}
+            className="flex-1"
           >
             Pick on map
           </Button>
         )}
         <Button
-          className="flex-1 rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-500 disabled:opacity-50"
+          variant="secondary"
+          size="sm"
           isDisabled={!canResetToFile || isPicking}
           onPress={onResetToFile}
+          className="flex-1"
         >
           Reset to file
         </Button>
@@ -117,6 +132,9 @@ export function AnchorCard({
         <p className="text-xs text-amber-700">
           Click the map to set the anchor. Press Esc to cancel.
         </p>
+      )}
+      {pickBlockedReason && !isPicking && (
+        <p className="text-xs text-red-700">{pickBlockedReason}</p>
       )}
     </div>
   );

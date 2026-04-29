@@ -1,5 +1,6 @@
 import { useReducer, useState } from "react";
-import { Button, Label, RadioGroup } from "react-aria-components";
+import { Button as AriaButton, Label, RadioGroup } from "react-aria-components";
+import { Button } from "../../button";
 import { RadioButton } from "../../radio-button";
 import type { CrsDef } from "../../../lib/crs";
 import type {
@@ -375,10 +376,12 @@ export function SurveyPointsCard({
 
           <div className="flex items-stretch gap-2">
             <Button
+              variant="secondary"
+              size="sm"
               onPress={() => {
                 dispatch({ type: "add" });
               }}
-              className="flex-1 rounded border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-500"
+              className="flex-1"
             >
               + Add point
             </Button>
@@ -397,9 +400,11 @@ export function SurveyPointsCard({
       )}
 
       <Button
+        variant="primary"
+        size="md"
         onPress={handleComputeTransform}
         isDisabled={!canSolve}
-        className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-500 disabled:opacity-50"
+        className="w-full"
       >
         Compute transform
       </Button>
@@ -464,13 +469,13 @@ function PointMiniCard({
           Point {index + 1}
         </span>
         {canRemove && (
-          <Button
+          <AriaButton
             onPress={onRemove}
             aria-label={`Remove point ${index + 1}`}
             className="rounded px-1 text-slate-400 outline-none hover:text-red-600 focus-visible:ring-2 focus-visible:ring-slate-500"
           >
             ×
-          </Button>
+          </AriaButton>
         )}
       </div>
       <div className="grid grid-cols-[5.5rem_1fr_1fr_1fr] items-center gap-y-1.5 gap-x-1 text-xs text-slate-500">

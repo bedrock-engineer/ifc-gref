@@ -13,8 +13,6 @@ interface ThreeDState {
   view: ViewMode;
   parameters: HelmertParams | null;
   activeCrs: CrsDef | null;
-  /** Size of one IFC length unit in metres (e.g. 0.3048 for FOOT). */
-  ifcMetresPerUnit: number;
 }
 
 interface MeshOrigin {
@@ -32,7 +30,7 @@ type Meshes = Awaited<ReturnType<IfcFacade["extractMeshes"]>>;
  */
 export function useThreeDLayer(
   mapRef: RefObject<MlMap | null>,
-  { view, parameters, activeCrs, ifcMetresPerUnit }: ThreeDState,
+  { view, parameters, activeCrs }: ThreeDState,
 ): void {
   const threeDRef = useRef<ThreeDLayer | null>(null);
   const meshOriginRef = useRef<MeshOrigin | null>(null);
@@ -61,7 +59,6 @@ export function useThreeDLayer(
     setup(map, {
       parameters,
       activeCrs,
-      ifcMetresPerUnit,
       threeDRef,
       meshOriginRef,
       meshCacheRef,
@@ -76,7 +73,7 @@ export function useThreeDLayer(
     return () => {
       cancelled = true;
     };
-  }, [mapRef, view, parameters, activeCrs, ifcMetresPerUnit]);
+  }, [mapRef, view, parameters, activeCrs]);
 }
 
 function teardown(
@@ -102,7 +99,6 @@ async function setup(
   context: {
     parameters: HelmertParams;
     activeCrs: CrsDef;
-    ifcMetresPerUnit: number;
     threeDRef: RefObject<ThreeDLayer | null>;
     meshOriginRef: RefObject<MeshOrigin | null>;
     meshCacheRef: RefObject<Promise<Meshes> | null>;
@@ -148,6 +144,5 @@ async function setup(
     context.activeCrs,
     map,
     meshOrigin,
-    context.ifcMetresPerUnit,
   );
 }

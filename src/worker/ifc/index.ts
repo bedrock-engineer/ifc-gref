@@ -7,7 +7,10 @@
 export { closeModel, openModel, saveModel } from "./api";
 export { extractFootprint } from "./footprint";
 export { extractMeshes, type MeshExtract } from "./meshes";
+export {
+  type ExistingGeoref,
+  type SiteReferenceSync,
+  writeMapConversion,
+} from "./georef";
 export { type IfcMetadata, readMetadata } from "./metadata";
-export { type ExistingGeoref } from "./read-georef";
 export { type IfcSchema } from "./schema";
-export { type SiteReferenceSync, writeMapConversion } from "./write-georef";

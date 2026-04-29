@@ -98,6 +98,10 @@ export interface ThreeDLayer {
    * Update where the mesh centroid sits on the globe, plus the rotation/scale
    * portion of the Helmert transform. `anchor` is the WGS84 + altitude of the
    * centroid as computed via applyHelmert(centroid) → projected → WGS84.
+   *
+   * Both vertices (web-ifc auto-converts to metres) and `parameters.scale`
+   * (canonical metres — see lib/helmert.ts) are in metres, so the effective
+   * per-vertex render scale is just `parameters.scale` — typically 1.0.
    */
   update(
     anchor: { lng: number; lat: number; altitude: number },
@@ -175,9 +179,15 @@ function computeMeshesCentroid(meshes: Array<MeshExtract>): THREE.Vector3 {
 }
 
 /**
- * Copy mesh positions shifted so `center` becomes the origin, and wrap the
- * result in a THREE.BufferGeometry with computed normals. Small magnitudes
- * keep float32 precision sane even when the IFC local frame is at RD coords.
+ * Copy mesh positions shifted so `center` becomes the origin, attach the
+ * source normals from web-ifc, and wrap the result in a THREE.BufferGeometry.
+ *
+ * Small position magnitudes keep float32 precision sane even when the IFC
+ * local frame is at RD coords. We deliberately do NOT call
+ * `computeVertexNormals()`: web-ifc emits face-flat normals at hard edges
+ * (via duplicated vertices) and smooth normals on curved surfaces, which is
+ * exactly what architectural geometry needs. Re-averaging per shared vertex
+ * would smooth wall/slab seams into soft gradients.
  */
 function createShiftedGeometry(
   mesh: MeshExtract,
@@ -192,9 +202,9 @@ function createShiftedGeometry(
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(shifted, 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(mesh.normals, 3));
   geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
-  geometry.computeVertexNormals();
-  
+
   return geometry;
 }
 
@@ -239,8 +249,8 @@ function createMeshMaterial(mesh: MeshExtract): THREE.MeshLambertMaterial {
 }
 
 /**
- * Build the per-frame model matrix that maps the mesh (Z-up, IFC-native
- * meters, centered on its bbox) into MapLibre's mercator-world frame.
+ * Build the per-frame model matrix that maps the mesh (Z-up, web-ifc-emitted
+ * metres, centered on its bbox) into MapLibre's mercator-world frame.
  *
  * MapLibre v5's custom-layer projection matrix (`defaultProjectionData.mainMatrix`)
  * expects vertices in **mercator coordinates** (0..1 range, with Z also in
@@ -248,6 +258,10 @@ function createMeshMaterial(mesh: MeshExtract): THREE.MeshLambertMaterial {
  * meters → mercator units via `meterInMercatorCoordinateUnits()` — the same
  * factor applied uniformly on all three axes, because mercator Z is already
  * normalised to the same units as mercator X/Y.
+ *
+ * `parameters.scale` is canonical metres (see lib/helmert.ts) — a real,
+ * dimensionless Helmert scale factor, typically 1.0. Vertices are also
+ * metres (web-ifc auto-conversion), so we apply the bare scale here.
  *
  * The mesh's +Y (north) maps onto mercator -Y (mercator Y grows southward),
  * so Y gets negated in the scale.
@@ -260,9 +274,9 @@ function buildModelMatrix(
     [anchor.lng, anchor.lat],
     anchor.altitude,
   );
-  
+
   const s = merc.meterInMercatorCoordinateUnits() * parameters.scale;
-  
+
   return new THREE.Matrix4()
     .makeTranslation(merc.x, merc.y, merc.z)
     .scale(new THREE.Vector3(s, -s, s))
@@ -385,6 +399,8 @@ export function createThreeDLayer(): ThreeDLayer {
       const center = computeMeshesCentroid(meshes);
       const alphaHistogram = DEBUG ? new Map<string, number>() : null;
       let totalVertices = 0;
+      const bbox = DEBUG ? new THREE.Box3() : null;
+      const point = DEBUG ? new THREE.Vector3() : null;
       for (const mesh of meshes) {
         const geometry = createShiftedGeometry(mesh, center);
         const material = createMeshMaterial(mesh);
@@ -403,12 +419,26 @@ export function createThreeDLayer(): ThreeDLayer {
             (alphaHistogram.get(alphaBucket) ?? 0) + 1,
           );
         }
+        if (bbox && point) {
+          for (let index = 0; index < mesh.positions.length; index += 3) {
+            point.set(
+              mesh.positions[index] ?? 0,
+              mesh.positions[index + 1] ?? 0,
+              mesh.positions[index + 2] ?? 0,
+            );
+            bbox.expandByPoint(point);
+          }
+        }
       }
-      if (DEBUG) {
+      if (DEBUG && bbox) {
+        const size = bbox.getSize(new THREE.Vector3());
         console.log("[3d-layer] setMeshes:", {
           meshCount: meshes.length,
           totalVertices,
           centroid: { x: center.x, y: center.y, z: center.z },
+          bboxSize: { x: size.x, y: size.y, z: size.z },
+          bboxMin: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
+          bboxMax: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
           alphaHistogram: alphaHistogram && Object.fromEntries(alphaHistogram),
           firstMeshSample: meshes[0] && {
             color: meshes[0].color,
@@ -416,12 +446,14 @@ export function createThreeDLayer(): ThreeDLayer {
             ifcClass: meshes[0].ifcClass,
           },
         });
-        // Huge unmissable cube at mesh origin. If the real meshes don't
-        // render but this does, the material/geometry is the suspect; if
-        // even this doesn't render, the render pipeline itself is broken.
+        // Make the debug cube a fixed fraction of the actual mesh extent so
+        // it's visible at the same scale as the building regardless of IFC
+        // length unit (mm vs m). 30% of the longest axis = always findable
+        // but not so big it occludes the model.
+        const cubeSize = Math.max(size.x, size.y, size.z) * 0.3;
         const debugCube = new THREE.Mesh(
-          new THREE.BoxGeometry(200, 200, 200),
-          new THREE.MeshBasicMaterial({ color: 0xFF_00_FF }),
+          new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize),
+          new THREE.MeshBasicMaterial({ color: 0xFF_00_FF, wireframe: true }),
         );
         debugCube.frustumCulled = false;
         modelGroup.add(debugCube);
@@ -434,7 +466,11 @@ export function createThreeDLayer(): ThreeDLayer {
 
     update(anchor, parameters) {
       if (DEBUG) {
-        console.log("[3d-layer] update:", { anchor, parameters });
+        console.log("[3d-layer] update:", {
+          anchor,
+          parameters,
+          modelScale: parameters.scale,
+        });
       }
       currentAnchor = anchor;
       currentParameters = parameters;

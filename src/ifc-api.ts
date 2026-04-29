@@ -65,10 +65,11 @@ export function getIfc(): IfcFacade {
     async extractMeshes() {
       return api.extractMeshes(requireModel());
     },
-    async writeMapConversion(epsgCode, parameters, siteReference) {
+    async writeMapConversion(epsgCode, verticalDatum, parameters, siteReference) {
       await api.writeMapConversion(
         requireModel(),
         epsgCode,
+        verticalDatum,
         parameters,
         siteReference,
       );

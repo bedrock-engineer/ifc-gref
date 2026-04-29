@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from "react";
 import {
-  Button,
+  Button as AriaButton,
   Disclosure,
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
+import { Button } from "./button";
 import {
   clearLog,
   getLogEntries,
@@ -24,7 +25,7 @@ export function DiagnosticsPanel() {
   return (
     <Disclosure className="shrink-0 border-t border-slate-200 bg-slate-50 text-xs">
       <Heading className="m-0">
-        <Button
+        <AriaButton
           slot="trigger"
           className="flex w-full items-center justify-between px-3 py-1.5 text-left font-medium text-slate-700 outline-none hover:bg-slate-100 focus-visible:bg-slate-100"
         >
@@ -32,7 +33,7 @@ export function DiagnosticsPanel() {
           <span aria-hidden className="text-slate-400 group-aria-expanded:rotate-180">
             ▾
           </span>
-        </Button>
+        </AriaButton>
       </Heading>
 
       <DisclosurePanel>
@@ -40,9 +41,10 @@ export function DiagnosticsPanel() {
           <span>Newest at the bottom</span>
 
           <Button
+            variant="ghost"
+            size="sm"
             onPress={clearLog}
             isDisabled={entries.length === 0}
-            className="rounded px-1 outline-none hover:text-slate-700 focus-visible:text-slate-700 disabled:opacity-40"
           >
             Clear
           </Button>

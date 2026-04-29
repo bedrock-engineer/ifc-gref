@@ -62,12 +62,6 @@ export interface MapViewProps {
    * the definition registered.
    */
   activeCrs: CrsDef | null;
-  /**
-   * Size of one IFC length unit in metres. Used to convert mesh Z (local
-   * IFC units) to MapLibre's metres-based altitude in the 3D layer,
-   * independent of Helmert.scale which may be in CRS units.
-   */
-  ifcMetresPerUnit: number;
   /** True while the sidebar is awaiting a map click to set the anchor. */
   isPickingAnchor: boolean;
   /** Fires once per click while `isPickingAnchor` is true. */
@@ -90,7 +84,6 @@ export function MapView({
   metadata,
   parameters,
   activeCrs,
-  ifcMetresPerUnit,
   isPickingAnchor,
   onAnchorPicked,
   onCancelPickAnchor,
@@ -147,15 +140,15 @@ export function MapView({
     for (const p of footprintLocal) {
       const world = applyHelmert({ x: p.x, y: p.y, z: 0 }, parameters);
 
-      const ll = transformProjectedToWgs84(activeCrs.code, world.x, world.y);
+      const ll = transformProjectedToWgs84(activeCrs, world.x, world.y);
 
       if (ll.isErr()) {
-        return null;
+        continue;
       }
 
       projected.push([ll.value.longitude, ll.value.latitude]);
     }
-    return projected;
+    return projected.length >= 3 ? projected : null;
   }, [footprintLocal, parameters, activeCrs]);
 
   const { mapRef, portals } = useMapInit(containerRef);
@@ -188,7 +181,6 @@ export function MapView({
     view: effectiveView,
     parameters,
     activeCrs,
-    ifcMetresPerUnit,
   });
   useMapLayers(mapRef, { basemap, overlays });
   useAnchorPicker(mapRef, isPickingAnchor, onAnchorPicked, onCancelPickAnchor);

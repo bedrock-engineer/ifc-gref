@@ -29,8 +29,9 @@ const TILESET_URL =
 // NL geoid undulation (NLGEO2018): WGS84 ellipsoid sits ~43 m above NAP
 // across the Netherlands (range ~40–44 m). 3D BAG's cesium3dtiles export
 // converts NAP → ellipsoidal heights using the NLGEO2018 grid, so buildings
-// at NAP 0 have ellipsoidal heights of ~+43 m. Used as a fallback when the
-// map has no terrain DEM (queryTerrainElevation returns null).
+// at NAP 0 have ellipsoidal heights of ~+43 m. Used as the layer anchor
+// altitude so vertices land in NAP-space (matching Mapterhorn/AHN terrain
+// over NL); see the per-frame comment below for the full derivation.
 const NL_GEOID_UNDULATION_M = 43
 
 export function createThreeDBagLayer(): ThreeDBagLayer {

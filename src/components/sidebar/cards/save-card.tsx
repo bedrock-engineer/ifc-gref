@@ -1,9 +1,17 @@
-import { Button } from "react-aria-components";
+import { Button } from "../../button";
 
 interface SaveCardProps {
   filename: string;
   busy: boolean;
   canWrite: boolean;
+  /**
+   * If non-null, save is blocked for a reason worth telling the user
+   * about (most importantly: an override-bearing CRS's grid failed to load
+   * — saving now would bake a ~170 m–wrong IfcMapConversion. See
+   * docs/crs-datum-grids.md). Shown as a small notice above the disabled
+   * button.
+   */
+  blockedReason?: string | null;
   downloadUrl: string | null;
   onWrite: () => void;
 }
@@ -17,15 +25,23 @@ export function SaveCard({
   filename,
   busy,
   canWrite,
+  blockedReason,
   downloadUrl,
   onWrite,
 }: SaveCardProps) {
   return (
     <div className="space-y-2 border-t border-slate-200 bg-white p-4">
+      {blockedReason && (
+        <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
+          {blockedReason}
+        </p>
+      )}
       <Button
+        variant="primary"
+        size="md"
         onPress={onWrite}
         isDisabled={!canWrite || busy}
-        className="w-full rounded bg-emerald-700 px-3 py-2 text-sm font-medium text-white outline-none hover:bg-emerald-800 focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50"
+        className="w-full"
       >
         Write IfcMapConversion & build download
       </Button>

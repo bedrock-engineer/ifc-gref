@@ -19,47 +19,6 @@
  * workflow is producing a 60 transform".
  */
 
-import type { IfcMetadata } from "../worker/ifc";
 
 /** Levels of Georeferencing */
 export type LoGeoref = "le10" | "l20" | "l50";
-
-export function detectLevelOfGeoref(metadata: IfcMetadata): LoGeoref {
-  if (metadata.existingGeoref) {
-    return "l50";
-  }
-  if (metadata.siteReference) {
-    return "l20";
-  }
-  return "le10";
-}
-
-/** Human-readable label for the level, e.g. "LoGeoRef 50". */
-export function loGeorefLabel(level: LoGeoref) {
-  switch (level) {
-    case "le10": {
-      return "LoGeoRef ≤ 10";
-    }
-    case "l20": {
-      return "LoGeoRef 20–40";
-    }
-    case "l50": {
-      return "LoGeoRef 50";
-    }
-  }
-}
-
-/** One-line description of what's in a file at this level. */
-export function loGeorefDescription(level: LoGeoref) {
-  switch (level) {
-    case "le10": {
-      return "No IfcSite reference and no IfcMapConversion. File has no usable geo information.";
-    }
-    case "l20": {
-      return "IfcSite RefLatitude/RefLongitude present, but no IfcMapConversion.";
-    }
-    case "l50": {
-      return "IfcMapConversion present, file is fully georeferenced.";
-    }
-  }
-}

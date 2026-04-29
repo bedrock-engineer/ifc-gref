@@ -1,3 +1,4 @@
+import { dsvFormat } from "d3-dsv";
 import { err, ok, type Result } from "neverthrow";
 
 /**
@@ -11,6 +12,10 @@ import { err, ok, type Result } from "neverthrow";
  * `localX,localY,localZ,targetX,targetY,targetZ` banner. Everything
  * else must be strictly numeric; decimal commas are rejected because
  * we can't distinguish them from the delimiter without guessing locale.
+ *
+ * Uses d3-dsv for tab/comma/semicolon-separated input (handles quoted
+ * fields, mixed line endings, trailing whitespace). Falls through to a
+ * plain whitespace split when the paste has no explicit delimiter.
  */
 export interface ParsedPointRow {
   localX: number;
@@ -40,62 +45,93 @@ export interface PasteParseError {
 
 const EXPECTED_COLS = 6;
 
-function tokenize(line: string): Array<string> {
-  return line.split(/[\t,;]|\s+/).filter((t) => t.length > 0);
+/**
+ * Pick a single-character delimiter for the whole paste, or null when no
+ * tab/semicolon/comma appears anywhere and we should fall back to
+ * whitespace splitting. Priority tab > semicolon > comma mirrors "Excel
+ * copy-paste first, then European CSV, then US CSV" — the common case.
+ */
+function detectDelimiter(text: string): "\t" | ";" | "," | null {
+  if (text.includes("\t")) {
+    return "\t";
+  }
+  if (text.includes(";")) {
+    return ";";
+  }
+  if (text.includes(",")) {
+    return ",";
+  }
+  return null;
 }
 
-function isNumericLine(line: string): boolean {
-  const tokens = tokenize(line);
-  if (tokens.length === 0) {
+function splitWhitespaceRows(text: string): Array<Array<string>> {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => line.split(/\s+/));
+}
+
+function tokenizeAll(text: string): Array<Array<string>> {
+  const delimiter = detectDelimiter(text);
+  if (delimiter === null) {
+    return splitWhitespaceRows(text);
+  }
+  // d3-dsv preserves empty trailing fields and respects quoted fields
+  // (e.g. "1,234","2,345" in a CSV with decimal commas would still land
+  // as two fields). Trim each cell so "1.0 " and "1.0" parse identically.
+  return dsvFormat(delimiter)
+    .parseRows(text)
+    .map((row) => row.map((cell) => cell.trim()))
+    .filter((row) => row.some((cell) => cell.length > 0));
+}
+
+function isNumericRow(row: Array<string>): boolean {
+  if (row.length === 0) {
     return false;
   }
-  return tokens.every((t) => Number.isFinite(Number(t)));
+  return row.every((t) => t.length > 0 && Number.isFinite(Number(t)));
 }
 
 export function parseSurveyPointPaste(
   raw: string,
 ): Result<PasteParseSuccess, PasteParseError> {
-  const lines = raw
-    .split(/\r?\n/)
-    .map((line, index) => ({
-      lineNumber: index + 1,
-      raw: line,
-      trimmed: line.trim(),
-    }))
-    .filter((l) => l.trimmed.length > 0);
-
-  if (lines.length === 0) {
+  const rows = tokenizeAll(raw);
+  if (rows.length === 0) {
     return err({ kind: "empty", issues: [] });
   }
 
-  const [firstLine] = lines;
-  const skippedHeader =
-    firstLine !== undefined && !isNumericLine(firstLine.trimmed);
-  const dataLines = skippedHeader ? lines.slice(1) : lines;
+  const [firstRow] = rows;
+  const skippedHeader = firstRow !== undefined && !isNumericRow(firstRow);
+  const dataRows = skippedHeader ? rows.slice(1) : rows;
 
-  if (dataLines.length === 0) {
+  if (dataRows.length === 0) {
     return err({ kind: "empty", issues: [] });
   }
 
-  const rows: Array<ParsedPointRow> = [];
+  const parsedRows: Array<ParsedPointRow> = [];
   const issues: Array<RowIssue> = [];
+  // d3-dsv strips the original line so we can't recover "the full raw line"
+  // per row. Reconstruct something close by joining the cells with a tab —
+  // the user sees the fields that were parsed, which is what matters for
+  // the "line N — reason" error message.
+  for (const [index, row] of dataRows.entries()) {
+    const lineNumber = skippedHeader ? index + 2 : index + 1;
+    const rawLine = row.join("\t");
 
-  for (const { lineNumber, raw: rawLine, trimmed } of dataLines) {
-    const tokens = tokenize(trimmed);
-
-    if (tokens.length !== EXPECTED_COLS) {
+    if (row.length !== EXPECTED_COLS) {
       issues.push({
         lineNumber,
         rawLine,
-        reason: `expected ${EXPECTED_COLS} values, got ${tokens.length}`,
+        reason: `expected ${EXPECTED_COLS} values, got ${row.length}`,
       });
       continue;
     }
 
-    const numeric = tokens.map(Number);
+    const numeric = row.map(Number);
     const firstBadIndex = numeric.findIndex((n) => !Number.isFinite(n));
     if (firstBadIndex !== -1) {
-      const badToken = tokens[firstBadIndex] ?? "?";
+      const badToken = row[firstBadIndex] ?? "?";
       issues.push({
         lineNumber,
         rawLine,
@@ -105,7 +141,7 @@ export function parseSurveyPointPaste(
     }
 
     const [lx = 0, ly = 0, lz = 0, tx = 0, ty = 0, tz = 0] = numeric;
-    rows.push({
+    parsedRows.push({
       localX: lx,
       localY: ly,
       localZ: lz,
@@ -115,9 +151,9 @@ export function parseSurveyPointPaste(
     });
   }
 
-  if (rows.length === 0) {
+  if (parsedRows.length === 0) {
     return err({ kind: "all-rows-invalid", issues });
   }
 
-  return ok({ rows, issues, skippedHeader });
+  return ok({ rows: parsedRows, issues, skippedHeader });
 }

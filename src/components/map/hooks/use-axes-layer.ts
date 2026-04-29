@@ -41,7 +41,7 @@ export function computeAxesGeometry(
   const sin = Math.sin(rotation);
 
   const project = (x: number, y: number): [number, number] | null => {
-    const result = transformProjectedToWgs84(activeCrs.code, x, y);
+    const result = transformProjectedToWgs84(activeCrs, x, y);
     if (result.isErr()) {
       return null;
     }

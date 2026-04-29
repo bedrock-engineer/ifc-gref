@@ -1,4 +1,5 @@
-import { Button, FileTrigger } from "react-aria-components";
+import { FileTrigger } from "react-aria-components";
+import { Button } from "./button";
 
 interface HeaderProps {
   filename: string | null;
@@ -24,7 +25,7 @@ export function Header({ filename, onFile }: HeaderProps) {
           }
         }}
       >
-        <Button className="cursor-pointer rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+        <Button variant="secondary" size="md">
           {filename ? "Load another file" : "Load file"}
         </Button>
       </FileTrigger>

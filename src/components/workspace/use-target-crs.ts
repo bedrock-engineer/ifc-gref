@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type CrsDef, lookupCrs } from "../../lib/crs";
+import { type CrsDef } from "../../lib/crs";
 import type { HelmertParams } from "../../lib/helmert";
 import { emitLog } from "../../lib/log";
 import {
@@ -7,7 +7,7 @@ import {
   reprojectAnchorOnCrsChange,
 } from "../../lib/workspace-logic";
 import type { IfcMetadata } from "../../worker/ifc";
-import { useCrsResolution } from "./use-crs-resolution";
+import { useCrsResolution } from "../sidebar/cards/target-crs-card/use-crs-resolution";
 
 interface UseTargetCrsOptions {
   metadata: IfcMetadata;
@@ -49,29 +49,23 @@ export function useTargetCrs({
     }
 
     const previousEpsg = activeCrs.code;
-    // Pre-register the new CRS so reprojectAnchorOnCrsChange's second leg
-    // can succeed.
-    const lookup = await lookupCrs(nextEpsg);
-
-    if (lookup.isErr()) {
-      setEpsgCode(nextCode);
-      onError(`CRS lookup failed for EPSG:${nextEpsg} (${lookup.error.kind})`);
-      return;
-    }
-
-    const reprojected = reprojectAnchorOnCrsChange({
+    const result = await reprojectAnchorOnCrsChange({
       parameters: currentParams,
       previousEpsg,
       nextEpsg,
     });
-
     setEpsgCode(nextCode);
 
-    if (reprojected.isErr()) {
-      onError(`Re-projection failed: ${String(reprojected.error.cause)}`);
+    if (result.isErr()) {
+      const e = result.error;
+      const detail =
+        e.kind === "lookup-failed"
+          ? `CRS lookup failed (${e.cause.kind})`
+          : String(e.cause);
+      onError(`Re-projection from EPSG:${previousEpsg} to EPSG:${nextEpsg} failed: ${detail}`);
       return;
     }
-    onReproject(reprojected.value);
+    onReproject(result.value);
     emitLog({
       message: `Re-projected anchor from EPSG:${previousEpsg} to EPSG:${nextEpsg}`,
     });

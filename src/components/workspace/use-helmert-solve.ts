@@ -56,21 +56,42 @@ export function useHelmertSolve({
         return;
       }
 
-      const source = buildSurveySource({ request, metadata, activeCrs });
+      // Survey-points-card collects local in IFC native units (mm/ft/...)
+      // and target in CRS native units (m/ft/...) — the headers in that card
+      // declare it. Solver canonical is metres (see lib/helmert.ts), so
+      // convert at this entry once. metadata.localOrigin and the IfcSite
+      // target inside buildSurveySource are already metres (worker boundary
+      // and proj4 boundary handle those).
+      const ifcMetresPerUnit = unitMetres.value;
+      const crsMetresPerUnit = activeCrs.metresPerUnit;
+      const convertedRequest: SolveRequest = {
+        mode: request.mode,
+        userPoints: request.userPoints.map((p) => ({
+          local: {
+            x: p.local.x * ifcMetresPerUnit,
+            y: p.local.y * ifcMetresPerUnit,
+            z: p.local.z * ifcMetresPerUnit,
+          },
+          target: {
+            x: p.target.x * crsMetresPerUnit,
+            y: p.target.y * crsMetresPerUnit,
+            z: p.target.z * crsMetresPerUnit,
+          },
+        })),
+      };
+
+      const source = buildSurveySource({
+        request: convertedRequest,
+        metadata,
+        activeCrs,
+      });
       if (source.isErr()) {
         onError(source.error.message);
         return;
       }
 
-      // Helmert scale maps IFC project length unit → target CRS map unit
-      // (IFC spec, IfcMapConversion.Scale). For metric CRS this equals
-      // `ifcMetres`; for foot-based CRS like EPSG:2272 it's
-      // `ifcMetres / crsMetresPerUnit`, which for a foot IFC + foot CRS
-      // correctly comes out to 1.0 rather than 0.3048.
-      const unitScale = unitMetres.value / activeCrs.metresPerUnit;
       const points = buildPointList(source.value);
       const solved = solveHelmert(points, {
-        unitScale,
         trueNorthRotation: trueNorthRotation(metadata),
       });
 

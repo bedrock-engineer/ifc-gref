@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Button,
   Dialog,
   DialogTrigger,
   Heading,
@@ -10,6 +9,7 @@ import {
   TextArea,
   TextField,
 } from "react-aria-components";
+import { Button } from "../button";
 import {
   parseSurveyPointPaste,
   type ParsedPointRow,
@@ -35,8 +35,9 @@ export function PasteSurveyPointsButton({
   return (
     <DialogTrigger>
       <Button
+        variant="secondary"
+        size="sm"
         aria-label="Paste survey points from clipboard"
-        className="inline-flex items-center justify-center rounded border border-dashed border-slate-300 px-2 py-1.5 text-xs text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-500"
       >
         <ClipboardIcon />
       </Button>
@@ -110,21 +111,19 @@ function PasteDialogBody({
       <PasteParseStatus parsed={parsed} currentPointCount={currentPointCount} />
 
       <div className="flex items-center justify-end gap-2 pt-1">
-        <Button
-          onPress={onCancel}
-          className="rounded px-3 py-1.5 text-xs font-medium text-slate-600 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-slate-500"
-        >
+        <Button variant="ghost" size="sm" onPress={onCancel}>
           Cancel
         </Button>
 
         <Button
+          variant="primary"
+          size="sm"
           isDisabled={!canCommit}
           onPress={() => {
             if (parsed?.isOk()) {
               onReplace(parsed.value.rows);
             }
           }}
-          className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white outline-none hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-500 disabled:opacity-50"
         >
           {canCommit
             ? `Replace with ${rows.length} ${rows.length === 1 ? "point" : "points"}`
@@ -147,7 +146,7 @@ function PasteParseStatus({
   if (parsed === null) {
     return (
       <p className="text-xs text-slate-400">
-        Waiting for paste — example two rows shown above.
+        Waiting for paste, two example rows shown above.
       </p>
     );
   }

@@ -30,10 +30,13 @@ export interface IfcFacade {
    * Write IfcMapConversion + IfcProjectedCRS into the open model. When
    * `siteReference` is provided, IfcSite.RefLatitude/RefLongitude/
    * RefElevation are overwritten to match, keeping the two georef
-   * mechanisms in sync per the Geonovum/bSI AU guidance.
+   * mechanisms in sync per the Geonovum/bSI AU guidance. `verticalDatum`
+   * is written into IfcProjectedCRS.VerticalDatum (or the equivalent
+   * ePset property in IFC2X3); pass null to leave it unset.
    */
   writeMapConversion(
     epsgCode: number,
+    verticalDatum: string | null,
     parameters: HelmertParams,
     siteReference: SiteReferenceSync | null,
   ): Promise<void>;

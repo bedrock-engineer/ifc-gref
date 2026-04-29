@@ -4,12 +4,7 @@ import {
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
-import {
-  detectLevelOfGeoref,
-  loGeorefDescription,
-  loGeorefLabel,
-  type LoGeoref,
-} from "../../../lib/lo-geo-ref";
+import { type LoGeoref } from "../../../lib/lo-geo-ref";
 import type { ExistingGeoref, IfcMetadata } from "../../../worker/ifc";
 import { Card } from "../card";
 
@@ -20,6 +15,9 @@ interface FileStatusCardProps {
 
 export function FileStatusCard({ filename, metadata }: FileStatusCardProps) {
   const level = detectLevelOfGeoref(metadata);
+
+  console.log("FileStatusCard", { filename, metadata, level });
+
   return (
     <Card title="File">
       <dl className="space-y-1 text-sm">
@@ -36,7 +34,9 @@ export function FileStatusCard({ filename, metadata }: FileStatusCardProps) {
 
       <LevelBadge level={level} />
 
-      <p className="text-xs mt-1 text-slate-500">{loGeorefDescription(level)}</p>
+      <p className="text-xs mt-1 text-slate-500">
+        {loGeorefDescription(level)}
+      </p>
 
       <Disclosure>
         <Heading level={3}>
@@ -95,6 +95,20 @@ function LevelBadge({ level }: LevelBadgeProps) {
   );
 }
 
+function loGeorefLabel(level: LoGeoref) {
+  switch (level) {
+    case "le10": {
+      return "LoGeoRef ≤ 10";
+    }
+    case "l20": {
+      return "LoGeoRef 20–40";
+    }
+    case "l50": {
+      return "LoGeoRef 50";
+    }
+  }
+}
+
 interface ExistingGeorefDetailProps {
   georef: ExistingGeoref;
 }
@@ -107,7 +121,7 @@ function ExistingGeorefDetail({ georef }: ExistingGeorefDetailProps) {
   return (
     <div className="space-y-1 border-t border-slate-200 pt-2">
       <Row label="Target CRS" value={georef.targetCrsName || "(unnamed)"} />
-      
+
       <Row label="Eastings" value={easting.toFixed(6)} />
 
       <Row label="Northings" value={northing.toFixed(6)} />
@@ -130,7 +144,7 @@ function Row({ label, value }: RowProps) {
   return (
     <div className="flex items-baseline justify-between gap-4">
       <dt className="text-slate-600">{label}</dt>
-      
+
       <dd className="truncate font-mono text-slate-900">{value}</dd>
     </div>
   );
@@ -167,7 +181,7 @@ function formatTrueNorth(tn: IfcMetadata["trueNorth"]): string {
   }
 
   const degrees = (Math.atan2(tn.ordinate, tn.abscissa) * 180) / Math.PI;
-  
+
   return `${tn.abscissa.toFixed(4)}, ${tn.ordinate.toFixed(4)} (${degrees.toFixed(2)}°)`;
 }
 
@@ -175,4 +189,28 @@ function formatRotation(rotation: number): string {
   const degrees = (rotation * 180) / Math.PI;
 
   return `${rotation.toFixed(6)} rad (${degrees.toFixed(4)}°)`;
+}
+
+function loGeorefDescription(level: LoGeoref) {
+  switch (level) {
+    case "le10": {
+      return "No IfcSite reference and no IfcMapConversion. File has no usable geo information.";
+    }
+    case "l20": {
+      return "IfcSite RefLatitude/RefLongitude present, but no IfcMapConversion.";
+    }
+    case "l50": {
+      return "IfcMapConversion present, file is fully georeferenced.";
+    }
+  }
+}
+
+function detectLevelOfGeoref(metadata: IfcMetadata): LoGeoref {
+  if (metadata.existingGeoref) {
+    return "l50";
+  }
+  if (metadata.siteReference) {
+    return "l20";
+  }
+  return "le10";
 }

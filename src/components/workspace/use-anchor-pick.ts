@@ -8,7 +8,7 @@ import type { PickedAnchor } from "../map/hooks/use-anchor-picker";
 interface UseAnchorPickOptions {
   metadata: IfcMetadata;
   activeCrs: CrsDef | null;
-  /** Existing anchor params to patch E/N/H into, or null to seed fresh. */
+  /** Existing anchor params to patch E/N into, or null to seed fresh. */
   base: HelmertParams | null;
   onPicked: (params: HelmertParams) => void;
   onError: (message: string) => void;

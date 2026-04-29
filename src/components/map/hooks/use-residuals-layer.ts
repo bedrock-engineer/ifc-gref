@@ -99,7 +99,7 @@ function buildFeatureCollection(
     const magnitudeXY = Math.hypot(dx, dy);
 
     const fittedWgs = transformProjectedToWgs84(
-      activeCrs.code,
+      activeCrs,
       fittedCrs.x,
       fittedCrs.y,
     );

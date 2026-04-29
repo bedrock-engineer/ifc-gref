@@ -153,17 +153,18 @@ export function frameCamera(
   options: { duration?: number } = {},
 ): void {
   const duration = options.duration ?? 0;
-  if (footprint != null && footprint.length >= 3) {
-    const seed = footprint[0];
+  const validPoints = footprint?.filter(isValidLngLat) ?? [];
+  if (validPoints.length >= 3) {
+    const seed = validPoints[0];
     if (!seed) {
       return;
     }
     const bounds = new maplibregl.LngLatBounds(seed, seed);
-    for (const point of footprint) {
+    for (const point of validPoints) {
       bounds.extend(point);
     }
     map.fitBounds(bounds, { padding: 40, duration, maxZoom: 19 });
-  } else if (referencePoint) {
+  } else if (referencePoint && isValidLngLat([referencePoint.longitude, referencePoint.latitude])) {
     const center: [number, number] = [
       referencePoint.longitude,
       referencePoint.latitude,
@@ -174,4 +175,12 @@ export function frameCamera(
       map.flyTo({ center, zoom: 17, duration });
     }
   }
+}
+
+function isValidLngLat([lng, lat]: [number, number]): boolean {
+  return (
+    Number.isFinite(lng) && Number.isFinite(lat) &&
+    lat >= -90 && lat <= 90 &&
+    lng >= -180 && lng <= 180
+  );
 }
