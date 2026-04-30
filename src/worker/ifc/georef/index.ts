@@ -14,7 +14,14 @@ import { readGeorefIfc4, writeGeorefIfc4 } from "./ifc4";
 import { readGeorefIfc2x3, writeGeorefIfc2x3 } from "./ifc2x3";
 import type { GeorefRead, SiteReferenceSync } from "./shared";
 
-export type { ExistingGeoref, GeorefRead, SiteReferenceSync } from "./shared";
+export type {
+  ExistingGeoref,
+  GeorefRead,
+  MapConversionStatus,
+  RawMapConversion,
+  RawProjectedCrs,
+  SiteReferenceSync,
+} from "./shared";
 
 /**
  * Read existing georeferencing from a model, picking the right path for the

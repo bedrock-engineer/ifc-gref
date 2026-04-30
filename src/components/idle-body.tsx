@@ -1,3 +1,4 @@
+import { useTransition } from "react";
 import {
   Button,
   DropZone,
@@ -52,6 +53,7 @@ function isIfcFilename(name: string): boolean {
 }
 
 function FileDropZone({ onFile, onError }: FileDropZoneProps) {
+  const [isDemoPending, startDemoTransition] = useTransition();
   return (
     <DropZone
       onDrop={(event) => {
@@ -110,21 +112,22 @@ function FileDropZone({ onFile, onError }: FileDropZoneProps) {
       </FileTrigger>
 
       <Button
+        isDisabled={isDemoPending}
         onPress={() => {
-          void loadDemoFile().then(
-            (file) => {
+          startDemoTransition(async () => {
+            try {
+              const file = await loadDemoFile();
               onFile(file);
-            },
-            (error: unknown) => {
+            } catch (error) {
               const message =
                 error instanceof Error ? error.message : String(error);
               onError(`Could not load demo file: ${message}`);
-            },
-          );
+            }
+          });
         }}
-        className="mt-2 text-xs text-slate-400 cursor-pointer underline hover:text-slate-600"
+        className="mt-2 text-xs text-slate-400 cursor-pointer underline hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        Try the MiniBIM demo
+        {isDemoPending ? "Loading demo…" : "Try the MiniBIM demo"}
       </Button>
     </DropZone>
   );

@@ -7,6 +7,50 @@ export interface ExistingGeoref {
   helmert: HelmertParams;
 }
 
+/**
+ * Verbatim-from-file IfcProjectedCRS attributes (IFC4) or ePset_ProjectedCRS
+ * properties (IFC2X3). All seven fields are surfaced even when null so the
+ * source-side UI can render "Not present" rows uniformly.
+ */
+export interface RawProjectedCrs {
+  name: string | null;
+  description: string | null;
+  geodeticDatum: string | null;
+  verticalDatum: string | null;
+  mapProjection: string | null;
+  mapZone: string | null;
+  /**
+   * Combined IfcSIUnit `Prefix + Name` (e.g. "METRE", "MILLIMETRE") or the
+   * raw string from ePset_ProjectedCRS. Null when MapUnit is unset — the
+   * spec then says treat as project length unit.
+   */
+  mapUnit: string | null;
+}
+
+/**
+ * Verbatim-from-file IfcMapConversion values *before* the read-side unit
+ * conversions in `buildHelmertFromFields`. Surfaced for the source-side UI
+ * so a BIM professional can see exactly what's on disk without re-opening
+ * the IFC in a text editor (matches what the Flask app's result page
+ * exposes via `IfcMapConversion.__dict__`).
+ */
+export interface RawMapConversion {
+  eastings: number;
+  northings: number;
+  orthogonalHeight: number;
+  scale: number;
+  xAxisAbscissa: number;
+  xAxisOrdinate: number;
+}
+
+/**
+ * Whether the file carries a usable IfcMapConversion. "absent" means the
+ * file has no MapConversion entity at all; "placeholder" means it has one
+ * but `isTrivialHelmert` flagged it (Revit-style E=N=0); "real" means the
+ * transform is meaningful and feeds `existingGeoref`.
+ */
+export type MapConversionStatus = "real" | "placeholder" | "absent";
+
 export interface GeorefRead {
   existingGeoref: ExistingGeoref | null;
   /**
@@ -31,6 +75,11 @@ export interface GeorefRead {
    * form) or type a custom label.
    */
   verticalDatumHint: string | null;
+  /** Verbatim-from-file IfcProjectedCRS / ePset_ProjectedCRS attributes. */
+  rawProjectedCrs: RawProjectedCrs | null;
+  /** Verbatim-from-file IfcMapConversion / ePset_MapConversion fields. */
+  rawMapConversion: RawMapConversion | null;
+  mapConversionStatus: MapConversionStatus;
 }
 
 /**
@@ -51,13 +100,16 @@ export interface SiteReferenceSync {
  * surfaced as a hint regardless — it lives on IfcProjectedCRS, not on
  * IfcMapConversion, so a placeholder transform doesn't invalidate it.
  */
-export function classifyGeorefRead(
-  helmert: HelmertParams,
-  targetCrsName: string,
-  verticalDatum: string | null,
-  sourceLabel: string,
-): GeorefRead {
+export function classifyGeorefRead(input: {
+  helmert: HelmertParams;
+  rawProjectedCrs: RawProjectedCrs | null;
+  rawMapConversion: RawMapConversion;
+  sourceLabel: string;
+}): GeorefRead {
+  const { helmert, rawProjectedCrs, rawMapConversion, sourceLabel } = input;
+  const targetCrsName = rawProjectedCrs?.name ?? "";
   const hint = targetCrsName || null;
+  const verticalDatum = rawProjectedCrs?.verticalDatum ?? null;
   const verticalHint = verticalDatum && verticalDatum.length > 0 ? verticalDatum : null;
   if (isTrivialHelmert(helmert)) {
     emitLog({
@@ -68,11 +120,35 @@ export function classifyGeorefRead(
       existingGeoref: null,
       targetCrsHint: hint,
       verticalDatumHint: verticalHint,
+      rawProjectedCrs,
+      rawMapConversion,
+      mapConversionStatus: "placeholder",
     };
   }
   return {
     existingGeoref: { targetCrsName, helmert },
     targetCrsHint: hint,
     verticalDatumHint: verticalHint,
+    rawProjectedCrs,
+    rawMapConversion,
+    mapConversionStatus: "real",
+  };
+}
+
+/** Empty result for files with no IfcMapConversion / ePset_MapConversion. */
+export function absentGeorefRead(
+  rawProjectedCrs: RawProjectedCrs | null,
+): GeorefRead {
+  return {
+    existingGeoref: null,
+    targetCrsHint: rawProjectedCrs?.name ?? null,
+    verticalDatumHint:
+      rawProjectedCrs?.verticalDatum
+      && rawProjectedCrs.verticalDatum.length > 0
+        ? rawProjectedCrs.verticalDatum
+        : null,
+    rawProjectedCrs,
+    rawMapConversion: null,
+    mapConversionStatus: "absent",
   };
 }

@@ -1,6 +1,5 @@
 import type { Map as MlMap } from "maplibre-gl";
-import { transformProjectedToWgs84, type CrsDef } from "../../lib/crs";
-import { applyHelmert } from "../../lib/helmert";
+import { projectLocalToWgs84, type CrsDef } from "../../lib/crs";
 import type { HelmertParams, XYZ } from "../../lib/helmert";
 import { emitLog } from "../../lib/log";
 import type { ThreeDLayer } from "../three-d-layer";
@@ -23,15 +22,9 @@ export function applyAnchor(
   meshOrigin: XYZ,
 ): void {
   // Both meshOrigin (web-ifc auto-converts to metres) and parameters
-  // (canonical metres — see lib/helmert.ts) are in metres, so applyHelmert
-  // can be called directly. Output is metres in the CRS frame; the proj4
-  // boundary converts to CRS-native units internally.
-  const projected = applyHelmert(meshOrigin, parameters);
-  const result = transformProjectedToWgs84(
-    activeCrs,
-    projected.x,
-    projected.y,
-  );
+  // (canonical metres — see lib/helmert.ts) are in metres. The proj4
+  // boundary inside projectLocalToWgs84 converts to CRS-native units.
+  const result = projectLocalToWgs84(meshOrigin, parameters, activeCrs);
   if (result.isErr()) {
     emitLog({
       level: "error",

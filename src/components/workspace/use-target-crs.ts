@@ -57,12 +57,14 @@ export function useTargetCrs({
     setEpsgCode(nextCode);
 
     if (result.isErr()) {
-      const e = result.error;
+      const { error } = result;
       const detail =
-        e.kind === "lookup-failed"
-          ? `CRS lookup failed (${e.cause.kind})`
-          : String(e.cause);
-      onError(`Re-projection from EPSG:${previousEpsg} to EPSG:${nextEpsg} failed: ${detail}`);
+        error.kind === "lookup-failed"
+          ? `CRS lookup failed (${error.cause.kind})`
+          : String(error.cause);
+      onError(
+        `Re-projection from EPSG:${previousEpsg} to EPSG:${nextEpsg} failed: ${detail}`,
+      );
       return;
     }
     onReproject(result.value);

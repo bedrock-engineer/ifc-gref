@@ -1,7 +1,7 @@
 import { Activity, useEffect, useMemo, useReducer, useState } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
-import { transformProjectedToWgs84 } from "../lib/crs";
-import { applyHelmert, type HelmertParams } from "../lib/helmert";
+import { projectLocalToWgs84 } from "../lib/crs";
+import { type HelmertParams } from "../lib/helmert";
 import { emitLog } from "../lib/log";
 import { unitToMetres } from "../lib/units";
 import {
@@ -14,9 +14,9 @@ import {
 import type { IfcMetadata } from "../worker/ifc";
 import { MapView } from "./map-view";
 import { AnchorCard } from "./sidebar/cards/anchor-card";
-import { FileStatusCard } from "./sidebar/cards/file-status-card";
 import { RotationCard } from "./sidebar/cards/rotation-card";
 import { SaveCard } from "./sidebar/cards/save-card";
+import { SourceCard } from "./sidebar/cards/source-card";
 import { SurveyPointsCard } from "./sidebar/cards/survey-points-card";
 import { TargetCrsCard } from "./sidebar/cards/target-crs-card";
 import { Sidebar } from "./sidebar/sidebar";
@@ -37,7 +37,6 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     metadata,
     initialAnchor,
   );
-  console.log("Workspace", { anchor });
 
   function reportError(message: string) {
     emitLog({ level: "error", message });
@@ -53,7 +52,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     onError: reportError,
   });
 
-  // Vertical datum is independent of the horizontal CRS lookup — IFC
+  // Vertical datum is independent of the horizontal CRS lookup. IFC
   // stores it as a free-form IfcIdentifier, not an EPSG code, so it lives
   // here as a plain string. Initialised from the file's existing hint.
   const [verticalDatum, setVerticalDatum] = useState<string | null>(
@@ -83,16 +82,12 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
       return rawEffectiveParameters;
     }
     const origin = metadata.localOrigin ?? { x: 0, y: 0, z: 0 };
-    const projected = applyHelmert(origin, rawEffectiveParameters);
-    const wgs84 = transformProjectedToWgs84(
+    const wgs84 = projectLocalToWgs84(
+      origin,
+      rawEffectiveParameters,
       activeCrs,
-      projected.x,
-      projected.y,
     );
-    if (wgs84.isErr()) {
-      return null;
-    }
-    return rawEffectiveParameters;
+    return wgs84.isOk() ? rawEffectiveParameters : null;
   }, [rawEffectiveParameters, activeCrs, metadata.localOrigin]);
 
   const effectiveAnchorProvenance = anchorProvenance(
@@ -100,11 +95,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     effectiveHelmertParameters !== null,
   );
 
-  const {
-    busy: solveBusy,
-    solve,
-    lastFitPoints,
-  } = useHelmertSolve({
+  const { solve, lastFitPoints } = useHelmertSolve({
     metadata,
     activeCrs,
     onSolved: (params) => {
@@ -113,11 +104,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     onError: reportError,
   });
 
-  const {
-    busy: writeBusy,
-    downloadUrl,
-    write,
-  } = useIfcWrite({
+  const { busy, downloadUrl, write } = useIfcWrite({
     parameters: effectiveHelmertParameters,
     activeCrs,
     verticalDatum,
@@ -139,8 +126,6 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     onError: reportError,
   });
 
-  const busy = solveBusy || writeBusy;
-
   // Surface unknown length units once at file load. The worker has already
   // applied a 1.0 fallback at the metadata read boundary, so downstream
   // values may be off by the unit factor — surface it so users can spot it
@@ -158,41 +143,40 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
   // Surface a useful log when we couldn't derive sensible Helmert params
   // — either the IfcSite reference is outside the CRS area of use, or the
   // file's IfcMapConversion is a placeholder that lands geometry at the
-  // projected CRS's false origin. Without this log, the anchor card just
-  // stays empty and the user has no idea why their file doesn't auto-place.
-  // Fires once per (file, CRS) combination via React's effect deps.
+  // projected CRS's false origin.
   useEffect(() => {
-    if (
-      activeCrs
-      && rawEffectiveParameters !== null
-      && effectiveHelmertParameters === null
-    ) {
+    const isOutsideOfCrs =
+      activeCrs &&
+      rawEffectiveParameters !== null &&
+      effectiveHelmertParameters === null;
+      
+    if (isOutsideOfCrs) {
       // Helmert was non-null but didn't land in the CRS bbox — placeholder.
       emitLog({
         level: "warn",
         message:
-          `Existing IfcMapConversion places geometry outside the area of `
-          + `use for EPSG:${activeCrs.code}`
-          + (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "")
-          + ` — likely a placeholder transform. Use the Survey points tab `
-          + `to anchor manually, or switch CRS.`,
+          `Existing IfcMapConversion places geometry outside the area of ` +
+          `use for EPSG:${activeCrs.code}` +
+          (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "") +
+          ` — likely a placeholder transform. Use the Survey points tab ` +
+          `to anchor manually, or switch CRS.`,
       });
     } else if (
-      activeCrs
-      && metadata.siteReference
-      && !metadata.existingGeoref
-      && effectiveHelmertParameters === null
+      activeCrs &&
+      metadata.siteReference &&
+      !metadata.existingGeoref &&
+      effectiveHelmertParameters === null
     ) {
       // Fell through to siteReference seed but it was rejected.
       const { latitude, longitude } = metadata.siteReference;
       emitLog({
         level: "warn",
         message:
-          `IfcSite reference (${longitude.toFixed(4)}°E, ${latitude.toFixed(4)}°N) `
-          + `is outside the area of use for EPSG:${activeCrs.code}`
-          + (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "")
-          + ". Pick a different CRS, or use the Survey points tab to enter "
-          + "a known point manually.",
+          `IfcSite reference (${longitude.toFixed(4)}°E, ${latitude.toFixed(4)}°N) ` +
+          `is outside the area of use for EPSG:${activeCrs.code}` +
+          (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "") +
+          ". Pick a different CRS, or use the Survey points tab to enter " +
+          "a known point manually.",
       });
     }
   }, [
@@ -211,8 +195,8 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
             filename={filename}
             busy={busy}
             canWrite={
-              effectiveHelmertParameters !== null
-              && (activeCrs?.accuracy.kind !== "degraded-override-failed")
+              effectiveHelmertParameters !== null &&
+              activeCrs?.accuracy.kind !== "degraded-override-failed"
             }
             blockedReason={
               activeCrs?.accuracy.kind === "degraded-override-failed"
@@ -220,13 +204,11 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                 : null
             }
             downloadUrl={downloadUrl}
-            onWrite={() => {
-              void write();
-            }}
+            onWrite={write}
           />
         }
       >
-        <FileStatusCard filename={filename} metadata={metadata} />
+        <SourceCard filename={filename} metadata={metadata} />
 
         <TargetCrsCard
           epsgCode={epsgCode}

@@ -153,7 +153,7 @@ export function frameCamera(
   options: { duration?: number } = {},
 ): void {
   const duration = options.duration ?? 0;
-  const validPoints = footprint?.filter(isValidLngLat) ?? [];
+  const validPoints = footprint?.filter((point) => isValidLngLat(point)) ?? [];
   if (validPoints.length >= 3) {
     const seed = validPoints[0];
     if (!seed) {

@@ -106,9 +106,15 @@ export interface CrsDef {
  * doing its own lookup. `kind: "invalid-code"` covers non-numeric user
  * input; `"error"` covers successful fetches that returned not-found or
  * an unparseable definition.
+ *
+ * `resolving.phase` separates the cheap path ("lookup" — manifest hit,
+ * proj4.defs registration) from the slow path ("grid" — fetching a
+ * datum-shift GeoTIFF off cdn.proj.org, can be MBs). The card surfaces
+ * the grid phase explicitly so the user knows why save is gated and why
+ * the map can't accurately place the model yet.
  */
 export type CrsLookupState =
-  | { kind: "resolving"; code: number }
+  | { kind: "resolving"; code: number; phase: "lookup" | "grid" }
   | { kind: "invalid-code" }
   | { kind: "ready"; def: CrsDef }
   | { kind: "error"; code: number; errorKind: CrsError["kind"] };

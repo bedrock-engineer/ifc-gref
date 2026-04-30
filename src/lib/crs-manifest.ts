@@ -264,8 +264,9 @@ const inflight = new Map<number, ResultAsync<CrsDef, CrsError>>();
  * exposed via `subscribeResolution` / `getResolutionState` so the React
  * layer can plug in via `useSyncExternalStore`. References are stable
  * within a single status — once a code is "ready", repeated reads return
- * the same `CrsLookupState` object until the next transition (which only
- * happens for "resolving" → "ready"/"error", once).
+ * the same `CrsLookupState` object. Transitions are
+ * resolving(lookup) → resolving(grid) (only when the entry has a grid)
+ * → ready/error.
  */
 const resolutionStates = new Map<number, CrsLookupState>();
 const resolutionSubscribers = new Map<number, Set<() => void>>();
@@ -315,8 +316,9 @@ export function lookupCrs(code: number): ResultAsync<CrsDef, CrsError> {
   // Populate the resolution-state map synchronously so subscribers see
   // "resolving" before the first await; otherwise getResolutionState
   // would return null for the brief window between this call and the
-  // first .then() firing.
-  setResolutionState(code, { kind: "resolving", code });
+  // first .then() firing. registerAndCache transitions to phase "grid"
+  // before kicking off the (potentially slow) GeoTIFF download.
+  setResolutionState(code, { kind: "resolving", code, phase: "lookup" });
   const promise: ResultAsync<CrsDef, CrsError> = ResultAsync.fromSafePromise(
     loadManifest(),
   ).andThen((result) => {
@@ -377,9 +379,17 @@ function registerAndCache(
   // it can do with the unloaded +nadgrids reference, transforms run with
   // reduced accuracy, display layer keeps working, save is gated. See
   // docs/crs-datum-grids.md for the full design.
-  const gridResult: ResultAsync<Result<void, OverrideError>, never> = entry.grid
-    ? ResultAsync.fromSafePromise(loadGrid(entry.grid))
-    : ResultAsync.fromSafePromise(Promise.resolve(ok()));
+  let gridResult: ResultAsync<Result<void, OverrideError>, never>;
+  if (entry.grid) {
+    // Surface the grid phase synchronously — already-loaded grids resolve
+    // in the same microtask, so this transition is harmless when there's
+    // nothing to wait for. Subscribers (TargetCrsCard) render
+    // "Loading precision grid…" while the GeoTIFF is fetched + parsed.
+    setResolutionState(code, { kind: "resolving", code, phase: "grid" });
+    gridResult = ResultAsync.fromSafePromise(loadGrid(entry.grid));
+  } else {
+    gridResult = ResultAsync.fromSafePromise(Promise.resolve(ok()));
+  }
 
   return gridResult.andThen((gridLoadResult) => {
     try {

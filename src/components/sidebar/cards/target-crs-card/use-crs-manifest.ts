@@ -48,7 +48,9 @@ export function useCrsManifest(
     const projected: Array<CrsOption> = [];
     for (const code of featuredCodes) {
       const option = snapshot.byCode.get(code);
-      if (!option) continue;
+      if (!option) {
+        continue;
+      }
       if (option.kind === "compound") {
         compound.push(option);
       } else {

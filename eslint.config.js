@@ -2,7 +2,6 @@ import js from "@eslint/js";
 import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
-// import reactCompiler from "eslint-plugin-react-compiler";
 import tseslint from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 import eslintPluginUnicorn from "eslint-plugin-unicorn";
@@ -20,7 +19,6 @@ export default defineConfig([
       tseslint.configs.stylisticTypeChecked,
       reactHooks.configs.flat["recommended-latest"],
       reactRefresh.configs.vite,
-      // reactCompiler.configs.recommended,
       eslintReact.configs["strict-type-checked"],
       eslintReact.configs["disable-conflict-eslint-plugin-react-hooks"],
     ],

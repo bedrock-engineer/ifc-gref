@@ -16,7 +16,13 @@ import { emitLog } from "../../lib/log";
 import { unitToMetres } from "../../lib/units";
 import { isValidLatLon } from "../../lib/validators";
 import { getApi } from "./api";
-import { type ExistingGeoref, readExistingGeoref } from "./georef";
+import {
+  type ExistingGeoref,
+  type MapConversionStatus,
+  type RawMapConversion,
+  type RawProjectedCrs,
+  readExistingGeoref,
+} from "./georef";
 import { type IfcSchema, parseSchema } from "./schema";
 import { dmsToDecimal, firstOf, rawValue } from "./shared";
 
@@ -40,6 +46,11 @@ export interface IfcMetadata {
   targetCrsHint: string | null;
   /** See GeorefRead.verticalDatumHint. */
   verticalDatumHint: string | null;
+  /** Verbatim-from-file IfcProjectedCRS / ePset_ProjectedCRS attributes. */
+  rawProjectedCrs: RawProjectedCrs | null;
+  /** Verbatim-from-file IfcMapConversion / ePset_MapConversion fields. */
+  rawMapConversion: RawMapConversion | null;
+  mapConversionStatus: MapConversionStatus;
 }
 
 /**
@@ -79,6 +90,9 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
     existingGeoref: georef.existingGeoref,
     targetCrsHint: georef.targetCrsHint,
     verticalDatumHint: georef.verticalDatumHint,
+    rawProjectedCrs: georef.rawProjectedCrs,
+    rawMapConversion: georef.rawMapConversion,
+    mapConversionStatus: georef.mapConversionStatus,
   };
 
   emitLog({

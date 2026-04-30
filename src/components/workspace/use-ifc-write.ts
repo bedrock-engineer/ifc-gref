@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { type CrsDef, transformProjectedToWgs84 } from "../../lib/crs";
 import { formatBytes } from "../../lib/format";
 import type { HelmertParams } from "../../lib/helmert";
@@ -25,7 +25,7 @@ export function useIfcWrite({
   onError,
 }: UseIfcWriteOptions) {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, startWriteTransition] = useTransition();
 
   useEffect(() => {
     return function revokeBlobUrl() {
@@ -35,7 +35,7 @@ export function useIfcWrite({
     };
   }, [downloadUrl]);
 
-  async function write() {
+  function write() {
     if (!parameters || !activeCrs) {
       onError("Set a target CRS and anchor before saving.");
       return;
@@ -68,41 +68,39 @@ export function useIfcWrite({
       return;
     }
 
-    setBusy(true);
+    startWriteTransition(async () => {
+      try {
+        const ifc = getIfc();
 
-    try {
-      const ifc = getIfc();
+        const siteReference = deriveSiteReference(activeCrs, parameters);
 
-      const siteReference = deriveSiteReference(activeCrs, parameters);
+        // For compound the vertical datum is already encoded in Name, so
+        // writing VerticalDatum on top would be redundant (and risks
+        // contradicting Name on stale state). For projected we just verified
+        // the user supplied one above.
+        const datumToWrite =
+          activeCrs.kind === "compound" ? null : verticalDatum;
 
-      // For compound the vertical datum is already encoded in Name, so
-      // writing VerticalDatum on top would be redundant (and risks
-      // contradicting Name on stale state). For projected we just verified
-      // the user supplied one above.
-      const datumToWrite =
-        activeCrs.kind === "compound" ? null : verticalDatum;
+        await ifc.writeMapConversion(
+          activeCrs.code,
+          datumToWrite,
+          parameters,
+          siteReference,
+        );
 
-      await ifc.writeMapConversion(
-        activeCrs.code,
-        datumToWrite,
-        parameters,
-        siteReference,
-      );
+        const blob = await ifc.save();
 
-      const blob = await ifc.save();
+        setDownloadUrl(URL.createObjectURL(blob));
 
-      setDownloadUrl(URL.createObjectURL(blob));
-
-      emitLog({
-        message: `Saved georeferenced model (${formatBytes(blob.size)}, EPSG:${activeCrs.code})`,
-      });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      onError(`Write failed: ${errorMessage}`);
-    } finally {
-      setBusy(false);
-    }
+        emitLog({
+          message: `Saved georeferenced model (${formatBytes(blob.size)}, EPSG:${activeCrs.code})`,
+        });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        onError(`Write failed: ${errorMessage}`);
+      }
+    });
   }
 
   return { busy, downloadUrl, write };

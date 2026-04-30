@@ -90,24 +90,32 @@ export function VerticalDatumPicker({
         <Label className="text-xs text-slate-600">
           Vertical datum (required for 3D)
         </Label>
+        
         {fromFile && (
           <span className="text-[10px] uppercase tracking-wide text-slate-400">
             from file
           </span>
         )}
       </div>
+
       {isMissing && (
         <p className="text-[11px] text-amber-700">
           Horizontal CRS alone is ambiguous in 3D contexts. Pick a vertical
           datum, or switch to a compound CRS (e.g. EPSG:7415).
         </p>
       )}
+
       <ComboBox
         inputValue={input}
         onInputChange={setInput}
         onChange={handleSelect}
         allowsCustomValue
-        menuTrigger="focus"
+        menuTrigger="input"
+        // We filter externally (filterVerticalDatumOptions: name + code +
+        // area-of-use). Without this, RA's default filter compares the typed
+        // input against each item's `textValue` (which is `EPSG:<code>`), so
+        // typing "NAP" would hide every item.
+        defaultFilter={() => true}
         className="flex flex-col gap-1"
       >
         <Group className="flex items-center rounded border border-slate-300 bg-white focus-within:border-slate-500">
@@ -129,7 +137,7 @@ export function VerticalDatumPicker({
         </Group>
 
         <Popover className="w-(--trigger-width) rounded border border-slate-200 bg-white shadow-md">
-          <Virtualizer layout={ListLayout} layoutOptions={{ rowHeight: 44 }}>
+          <Virtualizer layout={ListLayout} layoutOptions={{ rowHeight: 52 }}>
             <ListBox<VerticalDatumOption>
               className="max-h-64 outline-none"
               items={items}

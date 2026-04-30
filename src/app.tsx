@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { DiagnosticsPanel } from "./components/diagnostics-panel";
 import { Header } from "./components/header";
 import { IdleBody } from "./components/idle-body";
 import { Workspace } from "./components/workspace";
 import { getIfc } from "./ifc-api";
-import { prefetchCrsManifest } from "./lib/crs";
 import { formatBytes } from "./lib/format";
 import { emitLog } from "./lib/log";
 import type { IfcMetadata } from "./worker/ifc";
@@ -22,12 +21,6 @@ export type Stage =
 
 export default function App() {
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
-  console.log("App", { stage });
-  // Race the ~500 KB CRS manifest fetch against the first WASM load / IFC
-  // parse so `lookupCrs` is hot by the time the user drops a file.
-  useEffect(() => {
-    void prefetchCrsManifest();
-  }, []);
 
   async function handleFile(file: File) {
     setStage({

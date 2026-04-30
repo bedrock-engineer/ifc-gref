@@ -34,14 +34,18 @@ export function useCrsResolution(epsgCode: string): CrsLookupState {
 
   const subscribe = useCallback(
     (listener: () => void) => {
-      if (!isValid) return NO_OP_UNSUBSCRIBE;
+      if (!isValid) {
+        return NO_OP_UNSUBSCRIBE;
+      }
       return subscribeResolution(code, listener);
     },
     [code, isValid],
   );
 
   const getSnapshot = useCallback((): CrsLookupState => {
-    if (!isValid) return INVALID_CODE;
+    if (!isValid) {
+      return INVALID_CODE;
+    }
     // lookupCrs above guarantees a state exists for valid codes; the
     // INVALID_CODE fallback is unreachable but kept for type narrowing.
     return getResolutionState(code) ?? INVALID_CODE;

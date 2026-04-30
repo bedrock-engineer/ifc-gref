@@ -2,8 +2,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./app.tsx";
+import { prefetchCrsManifest } from "./lib/crs";
 
-const reactScan = false
+void prefetchCrsManifest();
+
+const reactScan = false;
 
 // react-scan: dev-only render diagnostics. Vite replaces `import.meta.env.DEV`
 // with `false` in production builds, so the dynamic import + the entire branch

@@ -23,11 +23,16 @@ import {
   readMapUnitMetresPerUnit,
   rotationToAxisPair,
 } from "../shared";
-import { classifyGeorefRead, type GeorefRead } from "./shared";
+import {
+  absentGeorefRead,
+  classifyGeorefRead,
+  type GeorefRead,
+  type RawProjectedCrs,
+} from "./shared";
 
 /**
  * IFC4+ read path. Looks for a native IfcMapConversion entity and reads
- * its six Helmert fields + the referenced IfcProjectedCRS name.
+ * its six Helmert fields + the referenced IfcProjectedCRS attributes.
  */
 export function readGeorefIfc4(
   ifcAPI: IfcAPI,
@@ -36,20 +41,15 @@ export function readGeorefIfc4(
 ): GeorefRead {
   const ids = ifcAPI.GetLineIDsWithType(modelID, IFCMAPCONVERSION);
   if (ids.size() === 0) {
-    return {
-      existingGeoref: null,
-      targetCrsHint: null,
-      verticalDatumHint: null,
-    };
+    // Even without a MapConversion, a stand-alone IfcProjectedCRS may
+    // still exist in the file (rare; the IFC4 model is supposed to
+    // attach via MapConversion). We don't pursue it — without a
+    // transform there's nothing to anchor it to.
+    return absentGeorefRead(null);
   }
   const mc = ifcAPI.GetLine(modelID, ids.get(0), true);
   const target: any = mc.TargetCRS;
-  const targetCrsName = String(rawValue(target?.Name) ?? "");
-  const verticalRaw = rawValue(target?.VerticalDatum);
-  const verticalDatum =
-    typeof verticalRaw === "string" && verticalRaw.length > 0
-      ? verticalRaw
-      : null;
+  const rawProjectedCrs = readRawProjectedCrsIfc4(target);
   // Eastings/Northings/OrthogonalHeight live in IfcProjectedCRS.MapUnit,
   // not in the IFC project's length unit (see Revit-authored mm files
   // that nonetheless write Eastings in metres because MapUnit=METRE).
@@ -57,23 +57,85 @@ export function readGeorefIfc4(
     target,
     ifcMetresPerUnit,
   );
+  const onDiskScale = optionalNumber(mc.Scale, 1);
+  const onDiskXAbs = optionalNumber(mc.XAxisAbscissa, 1);
+  const onDiskXOrd = optionalNumber(mc.XAxisOrdinate, 0);
+  const onDiskE = optionalNumber(mc.Eastings, 0);
+  const onDiskN = optionalNumber(mc.Northings, 0);
+  const onDiskH = optionalNumber(mc.OrthogonalHeight, 0);
   const helmert = buildHelmertFromFields(
     {
-      scale: rawValue(mc.Scale),
-      xAxisAbscissa: rawValue(mc.XAxisAbscissa),
-      xAxisOrdinate: rawValue(mc.XAxisOrdinate),
-      eastings: rawValue(mc.Eastings),
-      northings: rawValue(mc.Northings),
-      orthogonalHeight: rawValue(mc.OrthogonalHeight),
+      scale: onDiskScale,
+      xAxisAbscissa: onDiskXAbs,
+      xAxisOrdinate: onDiskXOrd,
+      eastings: onDiskE,
+      northings: onDiskN,
+      orthogonalHeight: onDiskH,
     },
     { mapUnitMetresPerUnit, ifcMetresPerUnit },
   );
-  return classifyGeorefRead(
+  return classifyGeorefRead({
     helmert,
-    targetCrsName,
-    verticalDatum,
-    "IfcMapConversion",
-  );
+    rawProjectedCrs,
+    rawMapConversion: {
+      eastings: onDiskE,
+      northings: onDiskN,
+      orthogonalHeight: onDiskH,
+      scale: onDiskScale,
+      xAxisAbscissa: onDiskXAbs,
+      xAxisOrdinate: onDiskXOrd,
+    },
+    sourceLabel: "IfcMapConversion",
+  });
+}
+
+function readRawProjectedCrsIfc4(target: any): RawProjectedCrs | null {
+  if (!target) {
+    return null;
+  }
+  return {
+    name: optionalString(target.Name),
+    description: optionalString(target.Description),
+    geodeticDatum: optionalString(target.GeodeticDatum),
+    verticalDatum: optionalString(target.VerticalDatum),
+    mapProjection: optionalString(target.MapProjection),
+    mapZone: optionalString(target.MapZone),
+    mapUnit: readMapUnitLabel(target.MapUnit),
+  };
+}
+
+/**
+ * Combine an IfcSIUnit's Prefix + Name into a single readable label
+ * ("MILLIMETRE", "METRE", …). Falls back to a free-form Name string for
+ * IfcConversionBasedUnit. Null when MapUnit is unset.
+ */
+function readMapUnitLabel(mapUnit: any): string | null {
+  if (!mapUnit) {
+    return null;
+  }
+  const prefix = optionalString(mapUnit.Prefix) ?? "";
+  const name = optionalString(mapUnit.Name);
+  if (name == null) {
+    return null;
+  }
+  return `${prefix}${name}`;
+}
+
+function optionalString(v: unknown): string | null {
+  const raw = rawValue(v);
+  if (typeof raw !== "string" || raw.length === 0) {
+    return null;
+  }
+  return raw;
+}
+
+function optionalNumber(v: unknown, fallback: number): number {
+  const raw = rawValue(v);
+  if (raw == null) {
+    return fallback;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 /**

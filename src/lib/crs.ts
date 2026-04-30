@@ -25,5 +25,6 @@ export {
   transformWgs84ToProjected,
   type TransformError,
 } from "./crs-transform";
+export { projectLocalToWgs84, type LngLat } from "./project-local";
 export { deriveCrsViewTarget, type CrsViewTarget } from "./crs-view-target";
 export { parseEpsgCode } from "./crs-parse";

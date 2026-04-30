@@ -1,3 +1,4 @@
+import { useTransition } from "react";
 import { type CrsLookupState } from "../../../lib/crs";
 import {
   isRetryableOverrideError,
@@ -73,6 +74,14 @@ function LookupDisplay({ state }: LookupDisplayProps) {
   }
 
   if (state.kind === "resolving") {
+    if (state.phase === "grid") {
+      return (
+        <p className="text-xs text-amber-700">
+          Loading precision grid for EPSG:{state.code}… The model can't be
+          placed accurately on the map until this finishes.
+        </p>
+      );
+    }
     return (
       <p className="text-xs text-slate-500">Looking up EPSG:{state.code}…</p>
     );
@@ -120,8 +129,20 @@ function AccuracyBadge({ def }: AccuracyBadgeProps) {
       <div className="text-emerald-700">✓ {accuracy.note}</div>
     );
   }
-  // degraded-override-failed
+  return <DegradedOverrideBadge code={def.code} accuracy={accuracy} />;
+}
+
+interface DegradedOverrideBadgeProps {
+  code: number;
+  accuracy: Extract<AccuracyStatus, { kind: "degraded-override-failed" }>;
+}
+
+function DegradedOverrideBadge({ code, accuracy }: DegradedOverrideBadgeProps) {
   const retryable = isRetryableOverrideError(accuracy.reason);
+  const [isRetrying, startRetryTransition] = useTransition();
+  const label = isRetrying
+    ? "Retrying…"
+    : (retryable ? "Retry grid load" : "Cannot retry — file an issue");
   return (
     <div className="space-y-1 rounded border border-red-300 bg-red-50 p-2 text-red-800">
       <div>⚠ {accuracy.note}</div>
@@ -132,11 +153,13 @@ function AccuracyBadge({ def }: AccuracyBadgeProps) {
         variant="secondary"
         size="sm"
         onPress={() => {
-          void retryCrsOverride(def.code);
+          startRetryTransition(async () => {
+            await retryCrsOverride(code);
+          });
         }}
-        isDisabled={!retryable}
+        isDisabled={!retryable || isRetrying}
       >
-        {retryable ? "Retry grid load" : "Cannot retry — file an issue"}
+        {label}
       </Button>
     </div>
   );

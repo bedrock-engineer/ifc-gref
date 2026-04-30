@@ -59,7 +59,7 @@ export function filterVerticalDatumOptions(
 ): Array<VerticalDatumOption> {
   const trimmed = input.trim();
   if (trimmed.length === 0) {
-    return all.slice();
+    return [...all];
   }
   if (/^\d+$/.test(trimmed)) {
     return all.filter((option) => String(option.code).startsWith(trimmed));

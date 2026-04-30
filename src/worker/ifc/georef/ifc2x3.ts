@@ -25,7 +25,12 @@ import {
   rawValue,
   rotationToAxisPair,
 } from "../shared";
-import { classifyGeorefRead, type GeorefRead } from "./shared";
+import {
+  absentGeorefRead,
+  classifyGeorefRead,
+  type GeorefRead,
+  type RawProjectedCrs,
+} from "./shared";
 
 /**
  * IFC2X3 has no native IfcMapConversion. The community convention (OSArch
@@ -47,11 +52,7 @@ export function readGeorefIfc2x3(
 ): GeorefRead {
   const siteID = findFirstSiteId(ifcAPI, modelID);
   if (siteID == null) {
-    return {
-      existingGeoref: null,
-      targetCrsHint: null,
-      verticalDatumHint: null,
-    };
+    return absentGeorefRead(null);
   }
 
   let mapConvID: number | null = null;
@@ -68,39 +69,40 @@ export function readGeorefIfc2x3(
     }
   }
 
-  if (mapConvID == null && projectedCrsID == null) {
-    return {
-      existingGeoref: null,
-      targetCrsHint: null,
-      verticalDatumHint: null,
-    };
-  }
-
-  const mcProperties =
-    mapConvID == null ? {} : readPsetProperties(ifcAPI, modelID, mapConvID);
   const crsProperties =
     projectedCrsID == null
       ? {}
       : readPsetProperties(ifcAPI, modelID, projectedCrsID);
-  const targetCrsName = String(
-    mcProperties.TargetCRS ?? crsProperties.Name ?? "",
-  );
-  const verticalRaw = crsProperties.VerticalDatum;
-  const verticalDatum =
-    typeof verticalRaw === "string" && verticalRaw.length > 0
-      ? verticalRaw
-      : null;
+  const rawProjectedCrs =
+    projectedCrsID == null ? null : readRawProjectedCrsIfc2x3(crsProperties);
+
+  if (mapConvID == null) {
+    return absentGeorefRead(rawProjectedCrs);
+  }
+
+  const mcProperties = readPsetProperties(ifcAPI, modelID, mapConvID);
+  // ePset_ProjectedCRS has no Name property in some files; fall back to the
+  // ePset_MapConversion's TargetCRS so we still surface a hint.
+  if (rawProjectedCrs && rawProjectedCrs.name == null) {
+    rawProjectedCrs.name = optionalPropString(mcProperties.TargetCRS);
+  }
+  const onDiskScale = optionalPropNumber(mcProperties.Scale, 1);
+  const onDiskXAbs = optionalPropNumber(mcProperties.XAxisAbscissa, 1);
+  const onDiskXOrd = optionalPropNumber(mcProperties.XAxisOrdinate, 0);
+  const onDiskE = optionalPropNumber(mcProperties.Eastings, 0);
+  const onDiskN = optionalPropNumber(mcProperties.Northings, 0);
+  const onDiskH = optionalPropNumber(mcProperties.OrthogonalHeight, 0);
   // ePset_MapConversion has no MapUnit concept; values are conventionally
   // in the IFC project's length unit. Pass `ifcMetresPerUnit` for both
   // factors so the scale ratio is 1 (on-disk Scale == internal scale).
   const helmert = buildHelmertFromFields(
     {
-      scale: mcProperties.Scale,
-      xAxisAbscissa: mcProperties.XAxisAbscissa,
-      xAxisOrdinate: mcProperties.XAxisOrdinate,
-      eastings: mcProperties.Eastings,
-      northings: mcProperties.Northings,
-      orthogonalHeight: mcProperties.OrthogonalHeight,
+      scale: onDiskScale,
+      xAxisAbscissa: onDiskXAbs,
+      xAxisOrdinate: onDiskXOrd,
+      eastings: onDiskE,
+      northings: onDiskN,
+      orthogonalHeight: onDiskH,
     },
     {
       mapUnitMetresPerUnit: ifcMetresPerUnit,
@@ -108,12 +110,65 @@ export function readGeorefIfc2x3(
     },
   );
 
-  return classifyGeorefRead(
+  // If the file had only ePset_MapConversion (no ePset_ProjectedCRS), we
+  // still need a non-null rawProjectedCrs so `classifyGeorefRead` can
+  // surface the targetCrsName hint from MC.TargetCRS.
+  const projectedCrs =
+    rawProjectedCrs
+    ?? {
+      name: optionalPropString(mcProperties.TargetCRS),
+      description: null,
+      geodeticDatum: null,
+      verticalDatum: null,
+      mapProjection: null,
+      mapZone: null,
+      mapUnit: null,
+    };
+
+  return classifyGeorefRead({
     helmert,
-    targetCrsName,
-    verticalDatum,
-    "ePset_MapConversion",
-  );
+    rawProjectedCrs: projectedCrs,
+    rawMapConversion: {
+      eastings: onDiskE,
+      northings: onDiskN,
+      orthogonalHeight: onDiskH,
+      scale: onDiskScale,
+      xAxisAbscissa: onDiskXAbs,
+      xAxisOrdinate: onDiskXOrd,
+    },
+    sourceLabel: "ePset_MapConversion",
+  });
+}
+
+function readRawProjectedCrsIfc2x3(
+  crsProperties: Record<string, unknown>,
+): RawProjectedCrs {
+  // ePset_ProjectedCRS mirrors the IFC4 IfcProjectedCRS attributes as
+  // free-form properties; readers in the wild may write any subset.
+  return {
+    name: optionalPropString(crsProperties.Name),
+    description: optionalPropString(crsProperties.Description),
+    geodeticDatum: optionalPropString(crsProperties.GeodeticDatum),
+    verticalDatum: optionalPropString(crsProperties.VerticalDatum),
+    mapProjection: optionalPropString(crsProperties.MapProjection),
+    mapZone: optionalPropString(crsProperties.MapZone),
+    mapUnit: optionalPropString(crsProperties.MapUnit),
+  };
+}
+
+function optionalPropString(v: unknown): string | null {
+  if (typeof v !== "string" || v.length === 0) {
+    return null;
+  }
+  return v;
+}
+
+function optionalPropNumber(v: unknown, fallback: number): number {
+  if (v == null) {
+    return fallback;
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 /**

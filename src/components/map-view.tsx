@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getIfc } from "../ifc-api";
-import { transformProjectedToWgs84, type CrsDef } from "../lib/crs";
-import { applyHelmert } from "../lib/helmert";
+import { projectLocalToWgs84, type CrsDef } from "../lib/crs";
 import { emitLog } from "../lib/log";
 import { deriveMapReference } from "../lib/map-reference";
 import type { HelmertParams, PointPair } from "../lib/helmert";
@@ -138,14 +137,14 @@ export function MapView({
     }
     const projected: Array<[number, number]> = [];
     for (const p of footprintLocal) {
-      const world = applyHelmert({ x: p.x, y: p.y, z: 0 }, parameters);
-
-      const ll = transformProjectedToWgs84(activeCrs, world.x, world.y);
-
+      const ll = projectLocalToWgs84(
+        { x: p.x, y: p.y, z: 0 },
+        parameters,
+        activeCrs,
+      );
       if (ll.isErr()) {
         continue;
       }
-
       projected.push([ll.value.longitude, ll.value.latitude]);
     }
     return projected.length >= 3 ? projected : null;

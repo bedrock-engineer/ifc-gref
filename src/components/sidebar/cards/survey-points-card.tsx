@@ -3,6 +3,7 @@ import { Button as AriaButton, Label, RadioGroup } from "react-aria-components";
 import { Button } from "../../button";
 import { RadioButton } from "../../radio-button";
 import type { CrsDef } from "../../../lib/crs";
+import { describeCrsUnit, describeIfcUnit } from "../../../lib/format-units";
 import type {
   HelmertParams,
   PointPair,
@@ -15,131 +16,11 @@ import { NumberField } from "../number-field";
 import { PasteSurveyPointsButton } from "../paste-survey-points-button";
 import { ResidualsTable } from "../residuals-table";
 
-// Flask parity: the survey table showed `Source CRS (IFC) [{{ ifcunit }}]` and
-// `Target CRS (MAP) [{{ mapunit }}]` so users knew which unit each column took.
-// IFC unit names come through uppercase ("MILLIMETRE"); the target CRS unit is
-// derived from metresPerUnit (proj4 does not always populate a `units` string).
-function ifcUnitLabel(name: string): string {
-  return name.toLowerCase();
-}
-
-function crsUnitLabel(crs: CrsDef | null): string {
-  if (!crs) {
-    return "unknown";
-  }
-  const m = crs.metresPerUnit;
-  if (m === 1) {
-    return "metre";
-  }
-  if (m === 0.001) {
-    return "millimetre";
-  }
-  if (m === 0.01) {
-    return "centimetre";
-  }
-  if (m === 0.3048) {
-    return "foot";
-  }
-  if (Math.abs(m - 1200 / 3937) < 1e-12) {
-    return "US survey foot";
-  }
-  if (m === 0.0254) {
-    return "inch";
-  }
-  if (m === 0.9144) {
-    return "yard";
-  }
-  return `${m} m`;
-}
-
-// Map the unit names to the sanctioned `Intl.NumberFormat` "simple unit"
-// identifiers so react-aria can render *and* announce the unit on each input.
-// Anything Intl doesn't recognise (e.g. US survey foot, nautical mile) returns
-// null and we fall back to a bare numeric format — the header strip still
-// names the unit for sighted users.
-function ifcIntlUnit(name: string): string | null {
-  switch (name.toUpperCase()) {
-    case "METRE":
-    case "METER": {
-      return "meter";
-    }
-    case "MILLIMETRE":
-    case "MILLIMETER": {
-      return "millimeter";
-    }
-    case "CENTIMETRE":
-    case "CENTIMETER": {
-      return "centimeter";
-    }
-    case "FOOT": {
-      return "foot";
-    }
-    case "INCH": {
-      return "inch";
-    }
-    case "YARD": {
-      return "yard";
-    }
-    case "MILE": {
-      return "mile";
-    }
-    default: {
-      return null;
-    }
-  }
-}
-
-function crsUnitShort(crs: CrsDef | null): string {
-  if (!crs) {
-    return "u";
-  }
-  const m = crs.metresPerUnit;
-  if (m === 1) {
-    return "m";
-  }
-  if (m === 0.001) {
-    return "mm";
-  }
-  if (m === 0.01) {
-    return "cm";
-  }
-  if (m === 0.3048 || Math.abs(m - 1200 / 3937) < 1e-12) {
-    return "ft";
-  }
-  if (m === 0.0254) {
-    return "in";
-  }
-  if (m === 0.9144) {
-    return "yd";
-  }
-  return "u";
-}
-
-function crsIntlUnit(crs: CrsDef | null): string | null {
-  if (!crs) {
-    return null;
-  }
-  const m = crs.metresPerUnit;
-  if (m === 1) {
-    return "meter";
-  }
-  if (m === 0.001) {
-    return "millimeter";
-  }
-  if (m === 0.01) {
-    return "centimeter";
-  }
-  if (m === 0.3048) {
-    return "foot";
-  }
-  if (m === 0.0254) {
-    return "inch";
-  }
-  if (m === 0.9144) {
-    return "yard";
-  }
-  return null;
-}
+// Flask parity: the survey table shows `Engineering (IFC) [{{ ifcunit }}]` and
+// `Projected (MAP) [{{ mapunit }}]` so users know which unit each column takes.
+// Unit display goes through `describeIfcUnit` / `describeCrsUnit` which
+// converge on a single descriptor (label / short / Intl ID) per unit — see
+// lib/format-units.ts.
 
 function numberFieldFormat(intlUnit: string | null): Intl.NumberFormatOptions {
   return intlUnit
@@ -271,6 +152,9 @@ export function SurveyPointsCard({
     hasSite ? "use-existing" : "ignore-existing",
   );
 
+  const ifcUnit = describeIfcUnit(metadata.lengthUnit);
+  const crsUnit = describeCrsUnit(activeCrs);
+
   const [points, dispatch] = useReducer(pointsReducer, [emptyPoint()]);
 
   const nonEmpty = points.filter((p) => !isEmpty(p));
@@ -341,7 +225,7 @@ export function SurveyPointsCard({
           <div className="flex items-baseline justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
             <span>
               <span className="font-medium text-slate-700">Engineering</span>{" "}
-              (IFC) [{ifcUnitLabel(metadata.lengthUnit)}]
+              (IFC) [{ifcUnit.label}]
             </span>
 
             <span className="text-slate-400" aria-hidden="true">
@@ -351,7 +235,7 @@ export function SurveyPointsCard({
             <span>
               <span className="font-medium text-slate-700">Projected</span>{" "}
               ({activeCrs ? `EPSG:${activeCrs.code}` : "CRS"}) [
-              {crsUnitLabel(activeCrs)}]
+              {crsUnit.label}]
             </span>
           </div>
 
@@ -360,10 +244,8 @@ export function SurveyPointsCard({
               key={point.id}
               index={index}
               point={point}
-              engineeringFormat={numberFieldFormat(
-                ifcIntlUnit(metadata.lengthUnit),
-              )}
-              projectedFormat={numberFieldFormat(crsIntlUnit(activeCrs))}
+              engineeringFormat={numberFieldFormat(ifcUnit.intl)}
+              projectedFormat={numberFieldFormat(crsUnit.intl)}
               canRemove={points.length > 1}
               onField={(key, value) => {
                 dispatch({ type: "update", index, key, value });
@@ -413,7 +295,7 @@ export function SurveyPointsCard({
         <ResidualsTable
           points={lastFitPoints}
           params={currentParams}
-          crsUnitShort={crsUnitShort(activeCrs)}
+          crsUnitShort={crsUnit.short}
         />
       )}
     </div>

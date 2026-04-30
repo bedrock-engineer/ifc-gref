@@ -9,6 +9,9 @@ export { extractFootprint } from "./footprint";
 export { extractMeshes, type MeshExtract } from "./meshes";
 export {
   type ExistingGeoref,
+  type MapConversionStatus,
+  type RawMapConversion,
+  type RawProjectedCrs,
   type SiteReferenceSync,
   writeMapConversion,
 } from "./georef";
