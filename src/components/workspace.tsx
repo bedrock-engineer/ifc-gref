@@ -252,9 +252,11 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                     isPicking={isPickingAnchor}
                     canResetToFile={Boolean(metadata.existingGeoref)}
                     pickBlockedReason={
-                      activeCrs?.accuracy.kind === "degraded-override-failed"
-                        ? "Pick disabled: precision grid for this CRS isn't loaded — clicking would record a ~170 m–wrong survey point. Retry from the CRS card."
-                        : null
+                      !activeCrs
+                        ? "Set a target CRS before picking an anchor."
+                        : activeCrs.accuracy.kind === "degraded-override-failed"
+                          ? "Pick disabled: precision grid for this CRS isn't loaded — clicking would record a ~170 m–wrong survey point. Retry from the CRS card."
+                          : null
                     }
                     onEdit={(params) => {
                       dispatchAnchor({ type: "edited", params });

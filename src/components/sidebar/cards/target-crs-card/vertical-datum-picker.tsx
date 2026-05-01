@@ -81,8 +81,7 @@ export function VerticalDatumPicker({
     }
   }
 
-  const isMissing =
-    initialValue === null || initialValue.trim().length === 0;
+  const isMissing = initialValue === null || initialValue.trim().length === 0;
 
   return (
     <div className="mt-3 flex flex-col gap-1">
@@ -90,7 +89,7 @@ export function VerticalDatumPicker({
         <Label className="text-xs text-slate-600">
           Vertical datum (required for 3D)
         </Label>
-        
+
         {fromFile && (
           <span className="text-[10px] uppercase tracking-wide text-slate-400">
             from file
@@ -137,9 +136,9 @@ export function VerticalDatumPicker({
         </Group>
 
         <Popover className="w-(--trigger-width) rounded border border-slate-200 bg-white shadow-md">
-          <Virtualizer layout={ListLayout} layoutOptions={{ rowHeight: 52 }}>
+          <Virtualizer layout={ListLayout} layoutOptions={{ rowSize: 52 }}>
             <ListBox<VerticalDatumOption>
-              className="max-h-64 outline-none"
+              className="block max-h-72 min-h-8 overflow-auto p-0 outline-none"
               items={items}
               renderEmptyState={() => (
                 <div className="px-2 py-1.5 text-xs text-slate-400">
@@ -152,6 +151,7 @@ export function VerticalDatumPicker({
               {(item) => (
                 <ListBoxItem
                   id={item.code}
+                  style={{ height: "100%", minHeight: 0 }}
                   textValue={`EPSG:${item.code}`}
                   className="cursor-pointer px-2 py-1.5 text-xs outline-none data-focused:bg-slate-100 data-selected:bg-slate-100"
                 >
@@ -159,6 +159,7 @@ export function VerticalDatumPicker({
                     <span className="font-mono text-slate-900">
                       EPSG:{item.code}
                     </span>
+
                     <span className="truncate text-slate-700">{item.name}</span>
                   </div>
 
