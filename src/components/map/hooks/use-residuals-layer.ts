@@ -1,11 +1,11 @@
 import maplibregl, { type Map as MlMap, type Marker } from "maplibre-gl";
 import { type RefObject, useEffect, useRef } from "react";
-import { type CrsDef, transformProjectedToWgs84 } from "../../../lib/crs";
+import { type CrsDef, transformProjectedToWgs84 } from "#modules/crs";
 import {
   applyHelmert,
   type HelmertParams,
   type PointPair,
-} from "../../../lib/helmert";
+} from "#modules/helmert/solve";
 import { RESIDUAL_FIT_COLOR, RESIDUALS_FIT_LAYER_ID, RESIDUALS_SOURCE_ID } from "../style";
 
 /**
@@ -73,7 +73,6 @@ type LonLat = [lon: number, lat: number];
 
 interface ResidualFeatureProperties {
   pointIndex: number;
-  magnitudeXY: number;
 }
 
 function buildFeatureCollection(
@@ -94,10 +93,6 @@ function buildFeatureCollection(
 
   for (const [index, point] of points.entries()) {
     const fittedCrs = applyHelmert(point.local, params);
-    const dx = point.target.x - fittedCrs.x;
-    const dy = point.target.y - fittedCrs.y;
-    const magnitudeXY = Math.hypot(dx, dy);
-
     const fittedWgs = transformProjectedToWgs84(
       activeCrs,
       fittedCrs.x,
@@ -115,7 +110,7 @@ function buildFeatureCollection(
 
     features.push({
       type: "Feature",
-      properties: { pointIndex: index, magnitudeXY },
+      properties: { pointIndex: index },
       geometry: { type: "Point", coordinates: fittedLngLat },
     });
   }

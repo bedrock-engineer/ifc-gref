@@ -14,7 +14,7 @@ import { IfcAPI } from "web-ifc";
 // otherwise try to fetch web-ifc.wasm from the document root and get
 // the SPA fallback HTML back, which fails the WASM magic-word check.
 import wasmUrl from "web-ifc/web-ifc.wasm?url";
-import { emitLog } from "../../lib/log";
+import { emitLog } from "#lib/log";
 
 let api: IfcAPI | null = null;
 

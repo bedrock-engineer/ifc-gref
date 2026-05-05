@@ -4,10 +4,11 @@ import {
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
+import { directionRatiosToDegrees } from "#state/workspace";
 import type {
   MapConversionStatus,
   RawMapConversion,
-} from "../../../../worker/ifc";
+} from "#modules/ifc/worker";
 import { Row } from "./row";
 
 function trimZeros(n: number, maxDecimals: number): string {
@@ -31,8 +32,16 @@ export function MapConversionSection({
     );
   }
 
-  const rotationDeg =
-    (Math.atan2(raw.xAxisOrdinate, raw.xAxisAbscissa) * 180) / Math.PI;
+  const rotationDeg = directionRatiosToDegrees(
+    raw.xAxisAbscissa,
+    raw.xAxisOrdinate,
+  );
+
+  // FactorX/Y/Z are populated only when the source entity is IFC 4.3's
+  // IfcMapConversionScaled subtype; null on plain IfcMapConversion or
+  // ePset_MapConversion. Driven entirely by the reader.
+  const isScaled = raw.factorX != null;
+  const heading = isScaled ? "IfcMapConversionScaled" : "IfcMapConversion";
 
   return (
     <Disclosure defaultExpanded>
@@ -44,7 +53,7 @@ export function MapConversionSection({
           <span className="transition-transform group-aria-expanded:rotate-90">
             ▸
           </span>
-          <span className="flex-1">IfcMapConversion</span>
+          <span className="flex-1">{heading}</span>
           {status === "placeholder" && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
               placeholder — ignored
@@ -69,6 +78,25 @@ export function MapConversionSection({
           <Row label="XAxisAbscissa" value={trimZeros(raw.xAxisAbscissa, 6)} />
           <Row label="XAxisOrdinate" value={trimZeros(raw.xAxisOrdinate, 6)} />
           <Row label="↳ Rotation" value={`${trimZeros(rotationDeg, 4)}°`} />
+          {isScaled && raw.factorX != null && raw.factorY != null && raw.factorZ != null && (
+            <>
+              <Row label="FactorX" value={trimZeros(raw.factorX, 6)} />
+              <Row label="FactorY" value={trimZeros(raw.factorY, 6)} />
+              <Row label="FactorZ" value={trimZeros(raw.factorZ, 6)} />
+              <Row
+                label="↳ Effective xScale"
+                value={trimZeros(raw.scale * raw.factorX, 6)}
+              />
+              <Row
+                label="↳ Effective yScale"
+                value={trimZeros(raw.scale * raw.factorY, 6)}
+              />
+              <Row
+                label="↳ Effective zScale"
+                value={trimZeros(raw.scale * raw.factorZ, 6)}
+              />
+            </>
+          )}
         </dl>
       </DisclosurePanel>
     </Disclosure>

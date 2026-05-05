@@ -8,7 +8,7 @@ import {
   type Result,
 } from "neverthrow";
 import { z } from "zod";
-import { emitLog } from "./log";
+import { emitLog } from "#lib/log";
 import type {
   AccuracyStatus,
   CrsBbox,
@@ -20,8 +20,8 @@ import type {
   GridSpec,
   OverrideError,
   VerticalDatumOption,
-} from "./crs-types";
-import { isRetryableOverrideError } from "./crs-types";
+} from "./types";
+import { isRetryableOverrideError } from "./types";
 
 // Type-only import: erased at compile time, so geotiff.js stays out of
 // the main bundle. The runtime `import("geotiff")` below is what actually

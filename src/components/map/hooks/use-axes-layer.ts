@@ -3,8 +3,8 @@ import { type RefObject, useEffect, useRef } from "react";
 import {
   transformProjectedToWgs84,
   type CrsDef,
-} from "../../../lib/crs";
-import type { HelmertParams } from "../../../lib/helmert";
+} from "#modules/crs";
+import type { HelmertParams } from "#modules/helmert/solve";
 import {
   AXES_LINE_LAYER_ID,
   AXES_SOURCE_ID,

@@ -1,11 +1,11 @@
 import { useTransition } from "react";
-import { type CrsLookupState } from "../../../lib/crs";
+import { type CrsLookupState } from "#modules/crs";
 import {
   isRetryableOverrideError,
   type AccuracyStatus,
   type OverrideError,
-} from "../../../lib/crs-types";
-import { retryCrsOverride } from "../../../lib/crs-manifest";
+} from "#modules/crs/types";
+import { retryCrsOverride } from "#modules/crs/manifest";
 import { Button } from "../../button";
 import { Card } from "../card";
 import { ProvenanceBadge, type Provenance } from "../provenance-badge";

@@ -1,6 +1,6 @@
 import * as Comlink from "comlink";
-import type { IfcFacade } from "./lib/ifc-facade";
-import { emitLog, type LogEntry } from "./lib/log";
+import type { IfcFacade } from "#modules/ifc/facade";
+import { emitLog, type LogEntry } from "#lib/log";
 import IfcWorker from "./worker/ifc-worker?worker";
 import type { IfcWorkerApi } from "./worker/ifc-worker";
 

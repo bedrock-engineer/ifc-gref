@@ -9,7 +9,7 @@ import {
   ListBoxItem,
   Popover,
 } from "react-aria-components";
-import { filterCrsOptions, type CrsOption } from "../../../../lib/crs";
+import { filterCrsOptions, type CrsOption } from "#modules/crs";
 import { useCrsCommit } from "./use-crs-commit";
 import { useCrsManifest } from "./use-crs-manifest";
 

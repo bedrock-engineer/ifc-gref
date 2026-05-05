@@ -1,8 +1,8 @@
 import { useState } from "react";
-import type { CrsDef } from "../../lib/crs";
-import type { HelmertParams } from "../../lib/helmert";
-import { applyPickedAnchor } from "../../lib/workspace-logic";
-import type { IfcMetadata } from "../../worker/ifc";
+import type { CrsDef } from "#modules/crs";
+import type { HelmertParams } from "#modules/helmert/solve";
+import { applyPickedAnchor } from "#state/workspace";
+import type { IfcMetadata } from "#modules/ifc/worker";
 import type { PickedAnchor } from "../map/hooks/use-anchor-picker";
 
 interface UseAnchorPickOptions {

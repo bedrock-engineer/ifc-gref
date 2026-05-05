@@ -7,10 +7,11 @@ import {
   TableHeader,
 } from "react-aria-components";
 import {
-  applyHelmert,
+  computeResiduals,
   type HelmertParams,
   type PointPair,
-} from "../../lib/helmert";
+  summarizeResiduals,
+} from "#modules/helmert/solve";
 
 function fmt(value: number): string {
   return value.toFixed(3);
@@ -41,45 +42,28 @@ export function ResidualsTable({
   params,
   crsUnitShort,
 }: ResidualsTableProps) {
-  const computed: Array<Omit<RowResidual, "isWorst">> = points.map(
-    (p, index) => {
-      const predicted = applyHelmert(p.local, params);
-      const dx = p.target.x - predicted.x;
-      const dy = p.target.y - predicted.y;
-      const dz = p.target.z - predicted.z;
-      return {
-        id: `p${index}`,
-        index,
-        dx,
-        dy,
-        dz,
-        magnitudeXY: Math.hypot(dx, dy),
-      };
-    },
-  );
-
-  let sumSqXY = 0;
-  let sumSqZ = 0;
-  let worstIndex = 0;
-  let worstMagnitude = -1;
-  for (const r of computed) {
-    sumSqXY += r.dx * r.dx + r.dy * r.dy;
-    sumSqZ += r.dz * r.dz;
-    if (r.magnitudeXY > worstMagnitude) {
-      worstMagnitude = r.magnitudeXY;
-      worstIndex = r.index;
-    }
-  }
-  if (computed.length === 0) {
+  const residuals = computeResiduals(points, params);
+  const summary = summarizeResiduals(residuals);
+  if (!summary) {
     return null;
   }
 
-  const rows: Array<RowResidual> = computed.map((r) => ({
+  // Only flag the worst point when it's a meaningful outlier — otherwise
+  // every fit, even a perfect one with mm residuals, gets one row painted
+  // red, which trains users to ignore the colour. Two conditions: at least
+  // 2× the RMS XY (genuine outlier rather than uniform noise) AND above an
+  // absolute 1 cm floor (mm-level fits stay clean even when the spread of
+  // residuals happens to be uneven).
+  const hasMeaningfulOutlier =
+    summary.worstMagnitudeXY > 2 * summary.rmsXY &&
+    summary.worstMagnitudeXY > 0.01;
+
+  const rows: Array<RowResidual> = residuals.map((r, index) => ({
     ...r,
-    isWorst: r.index === worstIndex,
+    id: `p${index}`,
+    index,
+    isWorst: hasMeaningfulOutlier && index === summary.worstIndex,
   }));
-  const rmsXY = Math.sqrt(sumSqXY / rows.length);
-  const rmsZ = Math.sqrt(sumSqZ / rows.length);
 
   return (
     <div className="space-y-1.5">
@@ -156,14 +140,18 @@ export function ResidualsTable({
 
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 border-t-2 border-slate-300 pt-1 text-xs">
         <dt className="text-slate-500">RMS XY</dt>
-        <dd className="text-right font-mono text-slate-900">{fmt(rmsXY)}</dd>
+        <dd className="text-right font-mono text-slate-900">
+          {fmt(summary.rmsXY)}
+        </dd>
         <dt className="text-slate-500">RMS Z</dt>
-        <dd className="text-right font-mono text-slate-900">{fmt(rmsZ)}</dd>
+        <dd className="text-right font-mono text-slate-900">
+          {fmt(summary.rmsZ)}
+        </dd>
         <dt className="text-slate-500">Max XY</dt>
         <dd className="text-right font-mono text-slate-900">
-          {fmt(worstMagnitude)}
+          {fmt(summary.worstMagnitudeXY)}
           <span className="ml-1 font-sans text-slate-500">
-            (point {worstIndex + 1})
+            (point {summary.worstIndex + 1})
           </span>
         </dd>
       </dl>

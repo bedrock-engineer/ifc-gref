@@ -8,8 +8,8 @@
  *   - default    nothing set — showing a sensible placeholder
  */
 
-export { type Provenance } from "../../lib/workspace-logic";
-import type { Provenance } from "../../lib/workspace-logic";
+export { type Provenance } from "#state/workspace";
+import type { Provenance } from "#state/workspace";
 
 const STYLES: Record<Provenance, string> = {
   file: "bg-slate-100 text-slate-700",

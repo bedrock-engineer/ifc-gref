@@ -1,12 +1,13 @@
-import { useEffect, useState, useTransition } from "react";
-import { type CrsDef, transformProjectedToWgs84 } from "../../lib/crs";
+import { useTransition } from "react";
+import { type CrsDef, transformProjectedToWgs84 } from "#modules/crs";
 import { formatBytes } from "../../lib/format";
-import type { HelmertParams } from "../../lib/helmert";
+import type { HelmertParams } from "#modules/helmert/solve";
 import { emitLog } from "../../lib/log";
 import { getIfc } from "../../ifc-api";
-import type { SiteReferenceSync } from "../../worker/ifc";
+import type { SiteReferenceSync } from "#modules/ifc/worker";
 
 interface UseIfcWriteOptions {
+  filename: string;
   parameters: HelmertParams | null;
   activeCrs: CrsDef | null;
   verticalDatum: string | null;
@@ -15,25 +16,18 @@ interface UseIfcWriteOptions {
 
 /**
  * Owns the IFC-write lifecycle: writing IfcMapConversion, packaging the
- * updated model as a blob, and managing the download URL (including
- * revoking the old object URL when it's replaced).
+ * updated model as a blob, and triggering the browser download in a single
+ * step. The object URL is created and revoked inside one transition — no
+ * intermediate state is exposed, since the user-facing flow is one click.
  */
 export function useIfcWrite({
+  filename,
   parameters,
   activeCrs,
   verticalDatum,
   onError,
 }: UseIfcWriteOptions) {
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [busy, startWriteTransition] = useTransition();
-
-  useEffect(() => {
-    return function revokeBlobUrl() {
-      if (downloadUrl) {
-        URL.revokeObjectURL(downloadUrl);
-      }
-    };
-  }, [downloadUrl]);
 
   function write() {
     if (!parameters || !activeCrs) {
@@ -90,7 +84,7 @@ export function useIfcWrite({
 
         const blob = await ifc.save();
 
-        setDownloadUrl(URL.createObjectURL(blob));
+        triggerDownload(blob, `georeferenced-${filename}`);
 
         emitLog({
           message: `Saved georeferenced model (${formatBytes(blob.size)}, EPSG:${activeCrs.code})`,
@@ -103,7 +97,20 @@ export function useIfcWrite({
     });
   }
 
-  return { busy, downloadUrl, write };
+  return { busy, write };
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Defer revoke so Safari has time to start the download (Chrome/Firefox
+  // are fine immediately, but the spec doesn't guarantee it).
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /**

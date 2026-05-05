@@ -11,10 +11,10 @@ import {
   IFCSITE,
   IFCUNITASSIGNMENT,
 } from "web-ifc";
-import type { XYZ } from "../../lib/helmert";
-import { emitLog } from "../../lib/log";
-import { unitToMetres } from "../../lib/units";
-import { isValidLatLon } from "../../lib/validators";
+import type { XYZ } from "#modules/helmert/solve";
+import { emitLog } from "#lib/log";
+import { unitToMetres } from "#modules/units/convert";
+import { isValidLatLon } from "#lib/validators";
 import { getApi } from "./api";
 import {
   type ExistingGeoref,
@@ -55,7 +55,7 @@ export interface IfcMetadata {
 
 /**
  * Worker-side unit boundary. The codebase-wide canonical is metres (see
- * `lib/helmert.ts`); every IfcLengthMeasure-typed value read by this module
+ * `modules/helmert/solve.ts`); every IfcLengthMeasure-typed value read by this module
  * is multiplied by this factor exactly once, here. The inverse multiplier
  * is applied symmetrically by the write path (`writeMapConversion`).
  * Unknown units fall back to 1.

@@ -1,9 +1,9 @@
 import { type Map as MlMap } from "maplibre-gl";
 import { type RefObject, useEffect, useRef } from "react";
 import { getIfc } from "../../../ifc-api";
-import type { CrsDef } from "../../../lib/crs";
-import type { HelmertParams } from "../../../lib/helmert";
-import type { IfcFacade } from "../../../lib/ifc-facade";
+import type { CrsDef } from "#modules/crs";
+import type { HelmertParams } from "#modules/helmert/solve";
+import type { IfcFacade } from "#modules/ifc/facade";
 import { emitLog } from "../../../lib/log";
 import type { ThreeDLayer } from "../../three-d-layer";
 import { applyAnchor } from "../apply-anchor";

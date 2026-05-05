@@ -6,7 +6,7 @@ export type {
   CrsLookupState,
   CrsOption,
   VerticalDatumOption,
-} from "./crs-types";
+} from "./types";
 export {
   getManifestSnapshot,
   getResolutionState,
@@ -15,16 +15,16 @@ export {
   subscribeManifest,
   subscribeResolution,
   type ManifestSnapshot,
-} from "./crs-manifest";
+} from "./manifest";
 export {
   filterCrsOptions,
   filterVerticalDatumOptions,
-} from "./crs-options";
+} from "./options";
 export {
   transformProjectedToWgs84,
   transformWgs84ToProjected,
   type TransformError,
-} from "./crs-transform";
+} from "./transform";
 export { projectLocalToWgs84, type LngLat } from "./project-local";
-export { deriveCrsViewTarget, type CrsViewTarget } from "./crs-view-target";
-export { parseEpsgCode } from "./crs-parse";
+export { deriveCrsViewTarget, type CrsViewTarget } from "./view-target";
+export { parseEpsgCode } from "./parse";

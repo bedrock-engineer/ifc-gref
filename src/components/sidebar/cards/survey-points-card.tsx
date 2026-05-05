@@ -2,16 +2,16 @@ import { useReducer, useState } from "react";
 import { Button as AriaButton, Label, RadioGroup } from "react-aria-components";
 import { Button } from "../../button";
 import { RadioButton } from "../../radio-button";
-import type { CrsDef } from "../../../lib/crs";
-import { describeCrsUnit, describeIfcUnit } from "../../../lib/format-units";
+import type { CrsDef } from "#modules/crs";
+import { describeCrsUnit, describeIfcUnit } from "#modules/units/format";
 import type {
   HelmertParams,
   PointPair,
   SolveRequest,
   SurveyMode,
-} from "../../../lib/helmert";
-import type { ParsedPointRow } from "../../../lib/survey-point-paste";
-import type { IfcMetadata } from "../../../worker/ifc";
+} from "#modules/helmert/solve";
+import type { ParsedPointRow } from "#modules/helmert/survey-point-paste";
+import type { IfcMetadata } from "#modules/ifc/worker";
 import { NumberField } from "../number-field";
 import { PasteSurveyPointsButton } from "../paste-survey-points-button";
 import { ResidualsTable } from "../residuals-table";
@@ -20,7 +20,7 @@ import { ResidualsTable } from "../residuals-table";
 // `Projected (MAP) [{{ mapunit }}]` so users know which unit each column takes.
 // Unit display goes through `describeIfcUnit` / `describeCrsUnit` which
 // converge on a single descriptor (label / short / Intl ID) per unit — see
-// lib/format-units.ts.
+// modules/units/format.ts.
 
 function numberFieldFormat(intlUnit: string | null): Intl.NumberFormatOptions {
   return intlUnit

@@ -1,4 +1,4 @@
-import { emitLog } from "../../lib/log";
+import { emitLog } from "#lib/log";
 
 export type IfcSchema = "IFC2X3" | "IFC4" | "IFC4X1" | "IFC4X2" | "IFC4X3";
 

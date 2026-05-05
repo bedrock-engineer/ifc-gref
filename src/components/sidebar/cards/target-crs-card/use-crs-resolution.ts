@@ -4,7 +4,7 @@ import {
   getResolutionState,
   lookupCrs,
   subscribeResolution,
-} from "../../../../lib/crs";
+} from "#modules/crs";
 
 const INVALID_CODE: CrsLookupState = { kind: "invalid-code" };
 const NO_OP_UNSUBSCRIBE = () => {};

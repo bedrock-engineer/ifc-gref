@@ -1,7 +1,7 @@
 import { err, ok, type Result } from "neverthrow";
-import { applyHelmert } from "./helmert";
-import { transformProjectedToWgs84, type CrsDef, type TransformError } from "./crs";
-import type { IfcMetadata } from "../worker/ifc";
+import { applyHelmert } from "#modules/helmert/solve";
+import { transformProjectedToWgs84, type CrsDef, type TransformError } from "#modules/crs";
+import type { IfcMetadata } from "#modules/ifc/worker";
 
 export type DeriveMapReferenceError =
   | { kind: "no-site-reference-and-no-georef" }
@@ -65,6 +65,7 @@ export function deriveMapReference(
   return err({ kind: "no-site-reference-and-no-georef" });
 }
 
+// maybe use turf js instead?
 function isWithinBboxLoose(
   longitude: number,
   latitude: number,

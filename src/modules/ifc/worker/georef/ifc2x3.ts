@@ -16,8 +16,8 @@ import {
   IFCREAL,
   IFCRELDEFINESBYPROPERTIES,
 } from "web-ifc";
-import type { HelmertParams } from "../../../lib/helmert";
-import { emitLog } from "../../../lib/log";
+import type { HelmertParams } from "#modules/helmert/solve";
+import { emitLog } from "#lib/log";
 import {
   buildHelmertFromFields,
   expressIDOf,
@@ -135,6 +135,9 @@ export function readGeorefIfc2x3(
       scale: onDiskScale,
       xAxisAbscissa: onDiskXAbs,
       xAxisOrdinate: onDiskXOrd,
+      factorX: null,
+      factorY: null,
+      factorZ: null,
     },
     sourceLabel: "ePset_MapConversion",
   });
@@ -230,7 +233,7 @@ export function writeGeorefIfc2x3(
       property(ifcAPI, modelID, "OrthogonalHeight", IFCLENGTHMEASURE, parameters.height),
       property(ifcAPI, modelID, "XAxisAbscissa", IFCREAL, xAxisAbscissa),
       property(ifcAPI, modelID, "XAxisOrdinate", IFCREAL, xAxisOrdinate),
-      property(ifcAPI, modelID, "Scale", IFCREAL, parameters.scale),
+      property(ifcAPI, modelID, "Scale", IFCREAL, parameters.xScale),
     ],
   );
   writePsetRel(ifcAPI, modelID, ownerHistoryHandle, siteID, mapConvPset);

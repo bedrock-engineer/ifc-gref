@@ -1,5 +1,5 @@
 import proj4 from "proj4";
-import type { CrsDef } from "./crs-types";
+import type { CrsDef } from "./types";
 
 /**
  * A best-guess place to aim the map camera for a CRS when the file has no

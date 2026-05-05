@@ -32,8 +32,8 @@ import {
   IFCWALLSTANDARDCASE,
   IFCWINDOW,
 } from "web-ifc";
-import type { HelmertParams, XYZ } from "../lib/helmert";
-import type { MeshExtract } from "../worker/ifc";
+import type { HelmertParams, XYZ } from "#modules/helmert/solve";
+import type { MeshExtract } from "#modules/ifc/worker";
 
 /**
  * Flip to `true` to enable render-pipeline diagnostics: a magenta 200m cube
@@ -99,9 +99,10 @@ export interface ThreeDLayer {
    * portion of the Helmert transform. `anchor` is the WGS84 + altitude of the
    * centroid as computed via applyHelmert(centroid) → projected → WGS84.
    *
-   * Both vertices (web-ifc auto-converts to metres) and `parameters.scale`
-   * (canonical metres — see lib/helmert.ts) are in metres, so the effective
-   * per-vertex render scale is just `parameters.scale` — typically 1.0.
+   * Both vertices (web-ifc auto-converts to metres) and `parameters`'
+   * scale fields (canonical metres — see modules/helmert/solve.ts) are in metres, so
+   * the effective per-vertex render scale is just the bare scale fields —
+   * typically 1.0 each.
    */
   update(
     anchor: { lng: number; lat: number; altitude: number },
@@ -259,9 +260,11 @@ function createMeshMaterial(mesh: MeshExtract): THREE.MeshLambertMaterial {
  * factor applied uniformly on all three axes, because mercator Z is already
  * normalised to the same units as mercator X/Y.
  *
- * `parameters.scale` is canonical metres (see lib/helmert.ts) — a real,
- * dimensionless Helmert scale factor, typically 1.0. Vertices are also
- * metres (web-ifc auto-conversion), so we apply the bare scale here.
+ * `parameters.horizontalScale` and `verticalScale` are canonical metres
+ * (see modules/helmert/solve.ts) — real, dimensionless Helmert scale factors,
+ * typically 1.0. Vertices are also metres (web-ifc auto-conversion), so we
+ * apply them bare. Horizontal and vertical are split per the same rule as
+ * `applyHelmert`: only the horizontal axes carry projection distortion.
  *
  * The mesh's +Y (north) maps onto mercator -Y (mercator Y grows southward),
  * so Y gets negated in the scale.
@@ -275,11 +278,14 @@ function buildModelMatrix(
     anchor.altitude,
   );
 
-  const s = merc.meterInMercatorCoordinateUnits() * parameters.scale;
+  const mercPerMetre = merc.meterInMercatorCoordinateUnits();
+  const sx = mercPerMetre * parameters.xScale;
+  const sy = mercPerMetre * parameters.yScale;
+  const sz = mercPerMetre * parameters.zScale;
 
   return new THREE.Matrix4()
     .makeTranslation(merc.x, merc.y, merc.z)
-    .scale(new THREE.Vector3(s, -s, s))
+    .scale(new THREE.Vector3(sx, -sy, sz))
     .multiply(new THREE.Matrix4().makeRotationZ(parameters.rotation));
 }
 
@@ -469,7 +475,9 @@ export function createThreeDLayer(): ThreeDLayer {
         console.log("[3d-layer] update:", {
           anchor,
           parameters,
-          modelScale: parameters.scale,
+          xScale: parameters.xScale,
+          yScale: parameters.yScale,
+          zScale: parameters.zScale,
         });
       }
       currentAnchor = anchor;

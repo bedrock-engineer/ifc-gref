@@ -3,6 +3,36 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "imports": {
+    "#modules/crs": {
+      "types": "./src/modules/crs/index.ts",
+      "default": "./src/modules/crs/index.ts"
+    },
+    "#modules/ifc/worker": {
+      "types": "./src/modules/ifc/worker/index.ts",
+      "default": "./src/modules/ifc/worker/index.ts"
+    },
+    "#modules/*": {
+      "types": "./src/modules/*.ts",
+      "default": "./src/modules/*"
+    },
+    "#lib/*": {
+      "types": "./src/lib/*.ts",
+      "default": "./src/lib/*"
+    },
+    "#state/*": {
+      "types": "./src/state/*.ts",
+      "default": "./src/state/*"
+    },
+    "#components/*": {
+      "types": "./src/components/*.ts",
+      "default": "./src/components/*"
+    },
+    "#worker/*": {
+      "types": "./src/worker/*.ts",
+      "default": "./src/worker/*"
+    }
+  },
   "scripts": {
     "dev": "npm run build:crs && vite",
     "build": "npm run build:crs && tsc -b && vite build",

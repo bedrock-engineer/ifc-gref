@@ -1,5 +1,5 @@
-import { type CrsDef } from "./crs-types";
-import { unitToMetres } from "./units";
+import { type CrsDef } from "#modules/crs/types";
+import { unitToMetres } from "./convert";
 
 export interface UnitDescriptor {
   /** Long form for header strips, e.g. "millimetre". */
@@ -19,8 +19,8 @@ interface Entry {
 }
 
 // Single source of truth for unit display. Keep entries in sync with
-// UNIT_TO_METRES in lib/units.ts — anything `unitToMetres` knows should
-// have a descriptor here too, so the IFC-name and CRS-metresPerUnit paths
+// UNIT_TO_METRES in ./convert — anything `unitToMetres` knows should have
+// a descriptor here too, so the IFC-name and CRS-metresPerUnit paths
 // converge on the same label/symbol.
 const ENTRIES: ReadonlyArray<Entry> = [
   { metres: 1,           label: "metre",          short: "m",  intl: "meter" },

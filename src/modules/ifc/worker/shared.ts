@@ -13,7 +13,7 @@
    worth hand-writing per-entity interfaces for a WASM interop shim. */
 
 import { type IfcAPI, IFCSITE } from "web-ifc";
-import type { HelmertParams } from "../../lib/helmert";
+import type { HelmertParams } from "#modules/helmert/solve";
 
 /**
  * Returns the flattened first entity of a given type, or null if there are none.
@@ -144,7 +144,7 @@ export function isTrivialHelmert(h: HelmertParams): boolean {
  *    *source-CRS units* (the IFC project's length unit) and *target-CRS
  *    units* (the MapUnit). e.g. for an mm project + METRE MapUnit, on-disk
  *    Scale = 0.001 (one mm = 0.001 m). But the codebase canonical (see
- *    `lib/helmert.ts`) is "metres in, metres out, scale dimensionless" —
+ *    `modules/helmert/solve.ts`) is "metres in, metres out, scale dimensionless" —
  *    so a true-identity Helmert is `scale = 1`, *not* `scale = 0.001`.
  *    We strip the unit factor:
  *
@@ -168,6 +168,14 @@ export function buildHelmertFromFields(
     eastings?: unknown;
     northings?: unknown;
     orthogonalHeight?: unknown;
+    /**
+     * IFC 4.3 IfcMapConversionScaled per-axis factors. Default to 1 when
+     * absent (plain IfcMapConversion / ePset_MapConversion). Per spec,
+     * effective per-axis scale is `scale × factor<axis>`.
+     */
+    factorX?: unknown;
+    factorY?: unknown;
+    factorZ?: unknown;
   },
   units: {
     mapUnitMetresPerUnit: number;
@@ -176,8 +184,14 @@ export function buildHelmertFromFields(
 ): HelmertParams {
   const { mapUnitMetresPerUnit, ifcMetresPerUnit } = units;
   const scaleRatio = mapUnitMetresPerUnit / ifcMetresPerUnit;
+  const scale = Number(fields.scale ?? 1) * scaleRatio;
+  const factorX = Number(fields.factorX ?? 1);
+  const factorY = Number(fields.factorY ?? 1);
+  const factorZ = Number(fields.factorZ ?? 1);
   return {
-    scale: Number(fields.scale ?? 1) * scaleRatio,
+    xScale: scale * factorX,
+    yScale: scale * factorY,
+    zScale: scale * factorZ,
     rotation: Math.atan2(
       Number(fields.xAxisOrdinate ?? 0),
       Number(fields.xAxisAbscissa ?? 1),

@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import { setLogSink } from '../lib/log'
+import { setLogSink } from '#lib/log'
 import {
   closeModel,
   extractFootprint,
@@ -8,7 +8,7 @@ import {
   readMetadata,
   saveModel,
   writeMapConversion,
-} from './ifc'
+} from '#modules/ifc/worker'
 
 /**
  * The Comlink-exposed API surface for the IFC worker. The main thread

@@ -1,4 +1,4 @@
-import type { CrsOption, VerticalDatumOption } from "./crs-types";
+import type { CrsOption, VerticalDatumOption } from "./types";
 
 /**
  * Combobox filter for the target-CRS picker. Empty input → `featured`

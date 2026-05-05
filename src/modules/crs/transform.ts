@@ -1,7 +1,7 @@
 import proj4 from "proj4";
 import { err, ok, type Result } from "neverthrow";
-import type { CrsBbox, CrsDef } from "./crs-types";
-import type { XYZ } from "./helmert";
+import type { CrsBbox, CrsDef } from "./types";
+import type { XYZ } from "#modules/helmert/solve";
 
 export interface TransformError {
   kind: "transform-failed";

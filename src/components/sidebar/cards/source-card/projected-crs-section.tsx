@@ -4,7 +4,7 @@ import {
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
-import type { RawProjectedCrs } from "../../../../worker/ifc";
+import type { RawProjectedCrs } from "#modules/ifc/worker";
 import { Row } from "./row";
 
 interface ProjectedCrsSectionProps {

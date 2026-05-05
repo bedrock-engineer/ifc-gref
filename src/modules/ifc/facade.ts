@@ -1,5 +1,5 @@
-import type { HelmertParams } from "./helmert";
-import type { IfcMetadata, MeshExtract, SiteReferenceSync } from "../worker/ifc";
+import type { HelmertParams } from "#modules/helmert/solve";
+import type { IfcMetadata, MeshExtract, SiteReferenceSync } from "#modules/ifc/worker";
 
 /**
  * Backend-agnostic interface for IFC file operations. The UI calls

@@ -1,17 +1,18 @@
 import { Activity, useEffect, useMemo, useReducer, useState } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
-import { projectLocalToWgs84 } from "../lib/crs";
-import { type HelmertParams } from "../lib/helmert";
+import { projectLocalToWgs84 } from "#modules/crs";
+import { type HelmertParams } from "#modules/helmert/solve";
 import { emitLog } from "../lib/log";
-import { unitToMetres } from "../lib/units";
+import { unitToMetres } from "#modules/units/convert";
 import {
   anchorParams,
   anchorProvenance,
   deriveEffectiveParameters,
+  detectBakedProjectedOrigin,
   initialAnchor,
   makeAnchorReducer,
-} from "../lib/workspace-logic";
-import type { IfcMetadata } from "../worker/ifc";
+} from "#state/workspace";
+import type { IfcMetadata } from "#modules/ifc/worker";
 import { MapView } from "./map-view";
 import { AnchorCard } from "./sidebar/cards/anchor-card";
 import { RotationCard } from "./sidebar/cards/rotation-card";
@@ -104,7 +105,8 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     onError: reportError,
   });
 
-  const { busy, downloadUrl, write } = useIfcWrite({
+  const { busy, write } = useIfcWrite({
+    filename,
     parameters: effectiveHelmertParameters,
     activeCrs,
     verticalDatum,
@@ -140,22 +142,52 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     }
   }, [unitResult]);
 
+  // One-shot diagnostic when the file bakes projected coords into
+  // IfcSite.ObjectPlacement instead of using IfcMapConversion (the
+  // anti-pattern the buildingSMART guide §3.3 explicitly warns against).
+  // Pick-on-map and the bbox sanity gate both fail in this case because
+  // the local origin is metres-far from the geometry; tell the user *why*
+  // so they can re-author the file rather than fight the UI.
+  const bakedProjectedOrigin = detectBakedProjectedOrigin(metadata);
+  useEffect(() => {
+    if (!bakedProjectedOrigin) {
+      return;
+    }
+    const { x, y, z } = bakedProjectedOrigin;
+    emitLog({
+      level: "warn",
+      message:
+        `IfcSite.ObjectPlacement at (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(1)}) ` +
+        `looks like baked-in projected coordinates. Per buildingSMART's ` +
+        `"User Guide for Geo-referencing in IFC" §3.3, the offset belongs ` +
+        `in IfcMapConversion (IFC4) or ePSet_MapConversion (IFC2X3), not ` +
+        `in IfcSite.ObjectPlacement.`,
+    });
+  }, [bakedProjectedOrigin]);
+
   // Surface a useful log when we couldn't derive sensible Helmert params
   // — either the IfcSite reference is outside the CRS area of use, or the
   // file's IfcMapConversion is a placeholder that lands geometry at the
-  // projected CRS's false origin.
+  // projected CRS's false origin. Skipped when we already warned about
+  // baked-in coords above (that's the underlying cause and the message
+  // would be misleading).
   useEffect(() => {
+    if (bakedProjectedOrigin) {
+      return;
+    }
     const isOutsideOfCrs =
       activeCrs &&
       rawEffectiveParameters !== null &&
       effectiveHelmertParameters === null;
-      
+
     if (isOutsideOfCrs) {
-      // Helmert was non-null but didn't land in the CRS bbox — placeholder.
+      const source = metadata.existingGeoref
+        ? "Existing IfcMapConversion"
+        : "Anchor parameters";
       emitLog({
         level: "warn",
         message:
-          `Existing IfcMapConversion places geometry outside the area of ` +
+          `${source} places geometry outside the area of ` +
           `use for EPSG:${activeCrs.code}` +
           (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "") +
           ` — likely a placeholder transform. Use the Survey points tab ` +
@@ -185,6 +217,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     metadata.existingGeoref,
     rawEffectiveParameters,
     effectiveHelmertParameters,
+    bakedProjectedOrigin,
   ]);
 
   return (
@@ -192,7 +225,6 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
       <Sidebar
         saveCard={
           <SaveCard
-            filename={filename}
             busy={busy}
             canWrite={
               effectiveHelmertParameters !== null &&
@@ -203,7 +235,6 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                 ? `Save blocked: precision grid for EPSG:${activeCrs.code} failed to load. Retry from the CRS card.`
                 : null
             }
-            downloadUrl={downloadUrl}
             onWrite={write}
           />
         }
@@ -252,11 +283,13 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                     isPicking={isPickingAnchor}
                     canResetToFile={Boolean(metadata.existingGeoref)}
                     pickBlockedReason={
-                      !activeCrs
-                        ? "Set a target CRS before picking an anchor."
-                        : activeCrs.accuracy.kind === "degraded-override-failed"
-                          ? "Pick disabled: precision grid for this CRS isn't loaded — clicking would record a ~170 m–wrong survey point. Retry from the CRS card."
-                          : null
+                      bakedProjectedOrigin
+                        ? "Pick disabled: this file bakes projected coordinates into IfcSite.ObjectPlacement instead of using IfcMapConversion (see diagnostics). Re-author the file with a small local origin to enable picking."
+                        : !activeCrs
+                          ? "Set a target CRS before picking an anchor."
+                          : activeCrs.accuracy.kind === "degraded-override-failed"
+                            ? "Pick disabled: precision grid for this CRS isn't loaded — clicking would record a ~170 m–wrong survey point. Retry from the CRS card."
+                            : null
                     }
                     onEdit={(params) => {
                       dispatchAnchor({ type: "edited", params });

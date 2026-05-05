@@ -1,5 +1,5 @@
 import { Button } from "../../button";
-import type { HelmertParams } from "../../../lib/helmert";
+import type { HelmertParams } from "#modules/helmert/solve";
 import { NumberField } from "../number-field";
 import { ProvenanceBadge, type Provenance } from "../provenance-badge";
 

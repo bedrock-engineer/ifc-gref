@@ -6,7 +6,7 @@ import { Workspace } from "./components/workspace";
 import { getIfc } from "./ifc-api";
 import { formatBytes } from "./lib/format";
 import { emitLog } from "./lib/log";
-import type { IfcMetadata } from "./worker/ifc";
+import type { IfcMetadata } from "#modules/ifc/worker";
 
 export type Stage =
   | { kind: "idle" }

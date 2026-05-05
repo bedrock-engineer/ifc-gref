@@ -4,13 +4,17 @@
 */
 
 import { type IfcAPI, IFCLENGTHMEASURE } from "web-ifc";
-import type { HelmertParams } from "../../../lib/helmert";
-import { emitLog } from "../../../lib/log";
+import type { HelmertParams } from "#modules/helmert/solve";
+import { emitLog } from "#lib/log";
 import { getApi } from "../api";
 import { deriveIfcMetresPerUnit } from "../metadata";
 import { parseSchema, type IfcSchema } from "../schema";
 import { decimalToDms, findFirstSiteId } from "../shared";
-import { readGeorefIfc4, writeGeorefIfc4 } from "./ifc4";
+import {
+  readGeorefIfc4,
+  writeGeorefIfc4,
+  writeGeorefIfc4Scaled,
+} from "./ifc4";
 import { readGeorefIfc2x3, writeGeorefIfc2x3 } from "./ifc2x3";
 import type { GeorefRead, SiteReferenceSync } from "./shared";
 
@@ -69,8 +73,7 @@ export async function writeMapConversion(
     // in the IFC project's length unit. Convert canonical metres → project
     // units symmetrically with the IFC2X3 read path.
     const projectUnitParameters: HelmertParams = {
-      scale: parameters.scale,
-      rotation: parameters.rotation,
+      ...parameters,
       easting: parameters.easting / ifcMetresPerUnit,
       northing: parameters.northing / ifcMetresPerUnit,
       height: parameters.height / ifcMetresPerUnit,
@@ -84,7 +87,7 @@ export async function writeMapConversion(
     );
     emitLog({
       source: "worker",
-      message: `Wrote ePset_MapConversion (EPSG:${epsgCode}${verticalSuffix}, scale=${projectUnitParameters.scale.toFixed(6)}, rot=${projectUnitParameters.rotation.toFixed(4)} rad)`,
+      message: `Wrote ePset_MapConversion (EPSG:${epsgCode}${verticalSuffix}, scale=${projectUnitParameters.xScale.toFixed(6)}, rot=${projectUnitParameters.rotation.toFixed(4)} rad)`,
     });
     return;
   }
@@ -94,6 +97,30 @@ export async function writeMapConversion(
   // through the MapUnit-aware reader gives identity). The writer also
   // converts internal (dimensionless) scale → on-disk scale (project unit
   // ↔ MapUnit ratio); see writeGeorefIfc4 for the formula.
+  //
+  // IFC 4.3 with anisotropic scales: dispatch to IfcMapConversionScaled.
+  // For all other cases (any pre-4.3 schema, or 4.3 with isotropic scales),
+  // plain IfcMapConversion is sufficient and spec-cleaner.
+  const isAnisotropic =
+    parameters.xScale !== parameters.yScale ||
+    parameters.yScale !== parameters.zScale;
+
+  if (schema === "IFC4X3" && isAnisotropic) {
+    writeGeorefIfc4Scaled(
+      ifcAPI,
+      modelID,
+      epsgCode,
+      verticalDatum,
+      parameters,
+      ifcMetresPerUnit,
+    );
+    emitLog({
+      source: "worker",
+      message: `Wrote IfcMapConversionScaled (EPSG:${epsgCode}${verticalSuffix}, xScale=${parameters.xScale.toFixed(6)}, yScale=${parameters.yScale.toFixed(6)}, zScale=${parameters.zScale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad)`,
+    });
+    return;
+  }
+
   writeGeorefIfc4(
     ifcAPI,
     modelID,
@@ -104,7 +131,7 @@ export async function writeMapConversion(
   );
   emitLog({
     source: "worker",
-    message: `Wrote IfcMapConversion (EPSG:${epsgCode}${verticalSuffix}, scale=${parameters.scale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad)`,
+    message: `Wrote IfcMapConversion (EPSG:${epsgCode}${verticalSuffix}, scale=${parameters.xScale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad)`,
   });
 }
 

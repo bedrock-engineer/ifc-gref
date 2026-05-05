@@ -22,8 +22,8 @@ This tool:
 1. Opens your IFC file and reads whatever georeferencing is already
    there (`IfcSite` lat/lon, `TrueNorth`, an existing `IfcMapConversion`,
    or the IFC2X3 `ePSet_MapConversion` fallback).
-2. Lets you pick a target CRS (any EPSG code — resolved via
-   [epsg.io](https://epsg.io)).
+2. Lets you pick a target CRS — searchable list of every projected,
+   compound, and vertical EPSG entry, bundled with the app.
 3. Lets you anchor the model on a live map — drop a reference point, or
    paste a list of surveyed correspondences (engineering XYZ ↔ projected
    XYZ) and solve a five-parameter Helmert fit.
@@ -34,13 +34,26 @@ This tool:
 
 ## Features
 
-- **Survey-point solver** — paste correspondences from a clipboard, solve
-  least-squares, see per-point residuals. Single-point fallback for when
-  you only have one known reference.
+- **Survey-point solver** — paste correspondences from a clipboard
+  (Excel / CSV / semicolon-CSV / whitespace), solve least-squares with
+  Levenberg–Marquardt, see per-point residuals on the map and in a chart.
+  Single-point fallback for when you only have one known reference.
 - **Three fit modes** — use the `IfcSite` reference alone, refine it with
   extra points, or ignore it entirely.
 - **Interactive parameter editing** — nudge easting / northing / height
   / rotation by hand and watch the map update live.
+- **Vertical datum picker** — separate horizontal CRS + vertical datum
+  inputs, written into `IfcProjectedCRS.VerticalDatum`. Compound EPSG
+  codes (e.g. 7415 = RD New + NAP) collapse this into a single field.
+- **Address search** — PDOK Locatieserver autocomplete for placing the
+  model when you don't have a coordinate to anchor against.
+- **Bundled CRS index** — every projected, compound, and vertical EPSG
+  entry from `epsg-index` ships as a static asset. No runtime calls to
+  epsg.io; works offline once the page is loaded.
+- **Precision grids on demand** — CRSs whose default proj4 string is
+  inaccurate (e.g. RD New, OSGB36) ship a GeoTIFF datum-shift grid
+  fetched from cdn.proj.org. The Target CRS card surfaces accuracy
+  state and lets you retry a failed grid load.
 - **Rich basemaps** (Netherlands-focused for now):
   - PDOK BRT (topographic), PDOK Luchtfoto (aerial), OpenStreetMap
   - BGT large-scale topography overlay
@@ -70,13 +83,18 @@ Follows the two relevant practice guides:
 
 ## Limitations
 
-- **CRS lookup needs internet.** Only WGS84 is built in; every other
-  EPSG code is fetched from [epsg.io](https://epsg.io) on demand and
-  cached for the session. Offline use works only if you've already
-  looked up the codes you need.
-- **Datum accuracy** — we use proj4js, which doesn't do NTv2 grid shifts
-  by default. Fine for typical BIM georeferencing (sub-metre); edge-case
-  datum transformations may lose precision vs. PROJ/pyproj.
+- **Datum accuracy outside grid coverage** — we use proj4js with
+  GeoTIFF-format datum-shift grids for the CRSs that need them (NL, UK,
+  …; see `docs/crs-datum-grids.md`). Other CRSs use the default proj4
+  string, which is fine for typical BIM georeferencing (sub-metre) but
+  may lose precision vs. PROJ/pyproj on complex datums.
+- **No vertical-datum transforms.** Heights round-trip as a single
+  `OrthogonalHeight` offset. proj4js can't transform between vertical
+  datums (NAP ↔ ellipsoidal etc.); outside the Netherlands the vertical
+  story is "horizontal-only, vertical approximate."
+- **First-load needs internet** — the CRS index ships with the app, but
+  precision grids are pulled from cdn.proj.org on first use of a covered
+  CRS. Once cached they work offline.
 - **Large files** — web-ifc runs in a worker, but opening a multi-GB
   IFC file is still constrained by browser memory.
 
@@ -92,33 +110,44 @@ implementation.
 
 ```bash
 npm install
-npm run dev      # start dev server
-npm run build    # production build
-npm run preview  # preview production build
-npm run lint     # ESLint
+npm run dev          # start dev server (rebuilds the CRS index first)
+npm run build        # production build
+npm run preview      # preview production build
+npm run lint         # ESLint
+npm run build:crs    # regenerate public/crs-index.json from epsg-index
+npm run verify:crs   # check CRS overrides against captured fixtures
+npm run knip         # find unused exports
 ```
 
 ### Stack
 
 React 19 + TypeScript + Vite; Tailwind CSS v4; react-aria-components;
-web-ifc (WASM) in a Web Worker via Comlink; proj4js for CRS transforms;
-ml-levenberg-marquardt for the Helmert solver; MapLibre GL JS + Three.js
-for the map and 3D view; neverthrow `Result` for error handling.
+web-ifc (WASM) in a Web Worker via Comlink; proj4js for CRS transforms,
+with on-demand GeoTIFF precision grids (geotiff.js); Zod for boundary
+validation; ml-levenberg-marquardt for the Helmert solver; MapLibre GL
+JS + Three.js for the map and 3D view; 3d-tiles-renderer for 3D BAG;
+neverthrow `Result` for error handling.
 
 ### Layout
 
 ```
 src/
-  worker/          web-ifc operations (reading, writing, footprint, meshes)
-  lib/             pure TS modules: CRS, units, Helmert, logging, validators
+  worker/
+    ifc/             web-ifc operations
+      georef/        IFC4 vs IFC2X3 read/write, version-split
+      metadata.ts    site, units, true north, length-unit boundary
+      footprint.ts   convex-hull extraction
+      meshes.ts      triangle extraction for 3D
+  lib/               pure TS modules: CRS, units, Helmert, logging, validators
   components/
-    map/           MapLibre init, custom layers, map controls
-    sidebar/       cards for file info, CRS, anchor, survey points, save
-    hooks/         workspace-level orchestration hooks
+    map/             MapLibre init, custom layers, controls, map hooks
+    sidebar/         cards for file info, CRS, anchor, survey points, save
+    workspace/       workspace-level orchestration hooks
 ```
 
 All IFC / CRS / Helmert logic lives in plain TypeScript under `src/lib/`
-and `src/worker/`; React components call into it.
+and `src/worker/`; React components call into it via `getIfc()` and
+the lib modules.
 
 ## Contributing
 

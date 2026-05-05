@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./app.tsx";
-import { prefetchCrsManifest } from "./lib/crs";
+import { prefetchCrsManifest } from "#modules/crs";
 
 void prefetchCrsManifest();
 

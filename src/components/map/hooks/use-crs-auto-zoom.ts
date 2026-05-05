@@ -1,6 +1,6 @@
 import maplibregl, { type Map as MlMap } from "maplibre-gl";
 import { type RefObject, useEffect, useRef } from "react";
-import { deriveCrsViewTarget, type CrsDef } from "../../../lib/crs";
+import { deriveCrsViewTarget, type CrsDef } from "#modules/crs";
 
 /**
  * Aim the camera at the CRS's area of use when the loaded file has only a

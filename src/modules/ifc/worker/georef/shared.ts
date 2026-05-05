@@ -1,5 +1,5 @@
-import type { HelmertParams } from "../../../lib/helmert";
-import { emitLog } from "../../../lib/log";
+import type { HelmertParams } from "#modules/helmert/solve";
+import { emitLog } from "#lib/log";
 import { isTrivialHelmert } from "../shared";
 
 export interface ExistingGeoref {
@@ -41,6 +41,15 @@ export interface RawMapConversion {
   scale: number;
   xAxisAbscissa: number;
   xAxisOrdinate: number;
+  /**
+   * Set only when the source entity is IFC 4.3's `IfcMapConversionScaled`
+   * subtype. Per spec, effective per-axis on-disk scaling is
+   * `scale × factor<axis>`. Null on plain `IfcMapConversion` /
+   * `ePSet_MapConversion`.
+   */
+  factorX: number | null;
+  factorY: number | null;
+  factorZ: number | null;
 }
 
 /**

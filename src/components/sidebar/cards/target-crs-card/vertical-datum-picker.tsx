@@ -15,7 +15,7 @@ import {
 import {
   filterVerticalDatumOptions,
   type VerticalDatumOption,
-} from "../../../../lib/crs";
+} from "#modules/crs";
 import { useManifestSnapshot } from "./use-crs-manifest";
 
 interface VerticalDatumPickerProps {

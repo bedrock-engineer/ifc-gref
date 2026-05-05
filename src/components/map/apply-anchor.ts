@@ -1,6 +1,6 @@
 import type { Map as MlMap } from "maplibre-gl";
-import { projectLocalToWgs84, type CrsDef } from "../../lib/crs";
-import type { HelmertParams, XYZ } from "../../lib/helmert";
+import { projectLocalToWgs84, type CrsDef } from "#modules/crs";
+import type { HelmertParams, XYZ } from "#modules/helmert/solve";
 import { emitLog } from "../../lib/log";
 import type { ThreeDLayer } from "../three-d-layer";
 
@@ -22,7 +22,7 @@ export function applyAnchor(
   meshOrigin: XYZ,
 ): void {
   // Both meshOrigin (web-ifc auto-converts to metres) and parameters
-  // (canonical metres — see lib/helmert.ts) are in metres. The proj4
+  // (canonical metres — see modules/helmert/solve.ts) are in metres. The proj4
   // boundary inside projectLocalToWgs84 converts to CRS-native units.
   const result = projectLocalToWgs84(meshOrigin, parameters, activeCrs);
   if (result.isErr()) {
@@ -70,6 +70,6 @@ export function applyAnchor(
   });
   const altitudeSource = parameters.height === 0 ? "terrain" : "OrthogonalHeight";
   emitLog({
-    message: `3D model anchored at ${ll.longitude.toFixed(6)}, ${ll.latitude.toFixed(6)} (alt=${absoluteAltitude.toFixed(2)}m via ${altitudeSource}, scale=${parameters.scale.toFixed(4)}, rot=${parameters.rotation.toFixed(4)} rad, meshOrigin=(${meshOrigin.x.toFixed(2)}, ${meshOrigin.y.toFixed(2)}, ${meshOrigin.z.toFixed(2)}))`,
+    message: `3D model anchored at ${ll.longitude.toFixed(6)}, ${ll.latitude.toFixed(6)} (alt=${absoluteAltitude.toFixed(2)}m via ${altitudeSource}, scale=${parameters.xScale.toFixed(4)}, rot=${parameters.rotation.toFixed(4)} rad, meshOrigin=(${meshOrigin.x.toFixed(2)}, ${meshOrigin.y.toFixed(2)}, ${meshOrigin.z.toFixed(2)}))`,
   });
 }

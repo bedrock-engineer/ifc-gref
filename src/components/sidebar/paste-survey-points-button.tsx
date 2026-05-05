@@ -16,7 +16,7 @@ import {
   type PasteParseError,
   type PasteParseSuccess,
   type RowIssue,
-} from "../../lib/survey-point-paste";
+} from "#modules/helmert/survey-point-paste";
 
 interface PasteSurveyPointsButtonProps {
   currentPointCount: number;

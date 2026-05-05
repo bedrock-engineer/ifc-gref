@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { type CrsDef } from "../../lib/crs";
-import type { HelmertParams } from "../../lib/helmert";
+import { type CrsDef } from "#modules/crs";
+import type { HelmertParams } from "#modules/helmert/solve";
 import { emitLog } from "../../lib/log";
 import {
   initialEpsgFromMetadata,
   reprojectAnchorOnCrsChange,
-} from "../../lib/workspace-logic";
-import type { IfcMetadata } from "../../worker/ifc";
+} from "#state/workspace";
+import type { IfcMetadata } from "#modules/ifc/worker";
 import { useCrsResolution } from "../sidebar/cards/target-crs-card/use-crs-resolution";
 
 interface UseTargetCrsOptions {

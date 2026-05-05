@@ -1,5 +1,6 @@
-import { type LoGeoref } from "../../../lib/lo-geo-ref";
-import type { IfcMetadata } from "../../../worker/ifc";
+import { type LoGeoref } from "#modules/ifc/lo-geo-ref";
+import { directionRatiosToDegrees } from "#state/workspace";
+import type { IfcMetadata } from "#modules/ifc/worker";
 import { Card } from "../card";
 import { MapConversionSection } from "./source-card/map-conversion-section";
 import { ProjectedCrsSection } from "./source-card/projected-crs-section";
@@ -118,6 +119,6 @@ function formatTrueNorth(tn: IfcMetadata["trueNorth"]): string {
   if (!tn) {
     return "—";
   }
-  const degrees = (Math.atan2(tn.ordinate, tn.abscissa) * 180) / Math.PI;
+  const degrees = directionRatiosToDegrees(tn.abscissa, tn.ordinate);
   return `${tn.abscissa.toFixed(4)}, ${tn.ordinate.toFixed(4)} (${degrees.toFixed(2)}°)`;
 }

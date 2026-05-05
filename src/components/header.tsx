@@ -26,7 +26,7 @@ export function Header({ filename, onFile }: HeaderProps) {
         }}
       >
         <Button variant="secondary" size="md">
-          {filename ? "Load another file" : "Load file"}
+          {filename ? "Load different IFC file" : "Load IFC file"}
         </Button>
       </FileTrigger>
       

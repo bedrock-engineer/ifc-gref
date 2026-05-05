@@ -4,7 +4,7 @@ import {
   type ManifestSnapshot,
   getManifestSnapshot,
   subscribeManifest,
-} from "../../../../lib/crs";
+} from "#modules/crs";
 
 /**
  * Subscribe to the app-level CRS manifest store. Bridges the non-React
