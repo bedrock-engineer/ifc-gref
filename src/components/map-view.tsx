@@ -203,14 +203,32 @@ export function MapView({
   // gated by provenance: `manual` is a live slider edit and stays put;
   // every other provenance (file/map/survey/default) is a discrete event
   // worth reframing for, including repeated solves at the same source-rank.
+  // Also reframes when the footprint becomes available *after* parameters
+  // have already been framed — on file load, parameters arrive synchronously
+  // from metadata but `extractFootprint()` lands later, so the first frame
+  // uses the single-point mapConversion/siteReference fallback; we promote
+  // to the footprint as soon as it's ready.
   // 3D handles its own flyTo in apply-anchor.ts, so this 2D path is gated
   // off when 3D is active.
-  const lastFramedParamsRef = useRef<HelmertParams | null>(null);
+  const lastFrameRef = useRef<{
+    parameters: HelmertParams | null;
+    hadFootprint: boolean;
+  } | null>(null);
   useEffect(function autoFrameOnDiscreteChange() {
-    if (parameters === lastFramedParamsRef.current) {
+    const hasFootprint = overlaySignals.footprint !== null;
+    const last = lastFrameRef.current;
+    // Bail when neither parameters identity nor footprint availability
+    // moved in a direction that warrants a reframe. We deliberately *don't*
+    // reframe when the footprint disappears — the marker fallback is still
+    // useful and silent retreat would feel like a glitch.
+    if (
+      last !== null
+      && last.parameters === parameters
+      && (last.hadFootprint || !hasFootprint)
+    ) {
       return;
     }
-    lastFramedParamsRef.current = parameters;
+    lastFrameRef.current = { parameters, hadFootprint: hasFootprint };
     if (parameters === null || anchorProvenance === "manual") {
       return;
     }
