@@ -100,7 +100,7 @@ export function useHelmertSolve({
     const solver =
       metadata.schema === "IFC4X3" ? solveHelmertSplit : solveHelmertJoint;
     const solved = solver(points, {
-      trueNorthRotation: trueNorthRotation(metadata),
+      trueNorthRotation: trueNorthRotation(metadata.trueNorth),
     });
 
     if (solved.isErr()) {

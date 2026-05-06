@@ -80,6 +80,7 @@ export function AnchorCard({
           >
             <DownloadIcon />
           </Button>
+
           <Tooltip
             placement="top"
             className="rounded bg-slate-900 px-2 py-1 text-xs text-white shadow-md data-entering:animate-in data-entering:fade-in data-exiting:animate-out data-exiting:fade-out"
@@ -94,11 +95,13 @@ export function AnchorCard({
                 <path d="M0 0 L4 4 L8 0" />
               </svg>
             </OverlayArrow>
-            Download IfcMapConversion info, can be applied to another IFC file
+            Download IfcMapConversion info, can be applied to another IFC file in this app
           </Tooltip>
         </TooltipTrigger>
+
         <ProvenanceBadge provenance={provenance} />
       </div>
+
       <div className="space-y-2">
         <NumberField
           label="Easting"
@@ -112,6 +115,7 @@ export function AnchorCard({
             maximumFractionDigits: 3,
           }}
         />
+
         <NumberField
           label="Northing"
           value={parameters?.northing ?? null}
@@ -124,6 +128,7 @@ export function AnchorCard({
             maximumFractionDigits: 3,
           }}
         />
+
         <NumberField
           label="Orthogonal Height"
           value={parameters?.height ?? null}
@@ -138,6 +143,7 @@ export function AnchorCard({
           }}
         />
       </div>
+
       <div className="flex gap-2">
         {isPicking ? (
           <Button
@@ -159,6 +165,7 @@ export function AnchorCard({
             Pick on map
           </Button>
         )}
+
         <Button
           variant="secondary"
           size="sm"
@@ -169,11 +176,13 @@ export function AnchorCard({
           Reset to file
         </Button>
       </div>
+
       {isPicking && (
         <p className="text-xs text-amber-700">
           Click the map to set the anchor. Press Esc to cancel.
         </p>
       )}
+      
       {pickBlockedReason && !isPicking && (
         <p className="text-xs text-red-700">{pickBlockedReason}</p>
       )}

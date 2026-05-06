@@ -1,4 +1,11 @@
-import { Activity, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  Activity,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { projectLocalToWgs84 } from "#modules/crs";
 import { type HelmertParams } from "#modules/helmert/solve";
@@ -111,26 +118,28 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     [metadata, effectiveHelmertParameters, activeCrs],
   );
 
-  // Log a one-shot warning the first time IfcSite is detected as outside
-  // the active CRS area. The map silently drops the marker (the value is
-  // unusable as a projected anchor); the log entry plus the inline
-  // sidebar badge make sure the user finds out.
+  // The map silently drops the marker (the value is unusable as a
+  // projected anchor); the log entry plus the inline sidebar badge make
+  // sure the user finds out.
   const previousSiteOutsideBboxRef = useRef(false);
-  useEffect(() => {
-    const site = metadata.siteReference;
-    if (
-      references.siteOutsideBbox
-      && !previousSiteOutsideBboxRef.current
-      && site
-    ) {
-      const where = activeCrs ? `EPSG:${activeCrs.code}` : "the active CRS";
-      emitLog({
-        level: "warn",
-        message: `IfcSite RefLat/RefLon (${site.latitude.toFixed(6)}, ${site.longitude.toFixed(6)}) is outside ${where} area of use — not shown on map.`,
-      });
-    }
-    previousSiteOutsideBboxRef.current = references.siteOutsideBbox;
-  }, [references.siteOutsideBbox, metadata.siteReference, activeCrs]);
+  useEffect(
+    function warnOnceIfSiteOutsideCrsBbox() {
+      const site = metadata.siteReference;
+      if (
+        references.siteOutsideBbox &&
+        !previousSiteOutsideBboxRef.current &&
+        site
+      ) {
+        const where = activeCrs ? `EPSG:${activeCrs.code}` : "the active CRS";
+        emitLog({
+          level: "warn",
+          message: `IfcSite RefLat/RefLon (${site.latitude.toFixed(6)}, ${site.longitude.toFixed(6)}) is outside ${where} area of use — not shown on map.`,
+        });
+      }
+      previousSiteOutsideBboxRef.current = references.siteOutsideBbox;
+    },
+    [references.siteOutsideBbox, metadata.siteReference, activeCrs],
+  );
 
   const { solve, lastFitPoints } = useHelmertSolve({
     metadata,
@@ -164,97 +173,103 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     onError: reportError,
   });
 
-  // Surface unknown length units once at file load. The worker has already
-  // applied a 1.0 fallback at the metadata read boundary, so downstream
-  // values may be off by the unit factor — surface it so users can spot it
-  // in the file-status card and the param-card readouts.
+  // The worker has already applied a 1.0 fallback at the metadata read
+  // boundary, so downstream values may be off by the unit factor — surface
+  // it so users can spot it in the file-status card and param readouts.
   const unitResult = unitToMetres(metadata.lengthUnit);
-  useEffect(() => {
-    if (unitResult.isErr()) {
-      emitLog({
-        level: "warn",
-        message: `Unknown IFC length unit '${unitResult.error.name}' — treated as metres at the worker boundary; numeric values may be off by the unit factor`,
-      });
-    }
-  }, [unitResult]);
+  useEffect(
+    function warnIfLengthUnitUnknown() {
+      if (unitResult.isErr()) {
+        emitLog({
+          level: "warn",
+          message: `Unknown IFC length unit '${unitResult.error.name}' — treated as metres at the worker boundary; numeric values may be off by the unit factor`,
+        });
+      }
+    },
+    [unitResult],
+  );
 
-  // One-shot diagnostic when the file bakes projected coords into
-  // IfcSite.ObjectPlacement instead of using IfcMapConversion (the
-  // anti-pattern the buildingSMART guide §3.3 explicitly warns against).
+  // The buildingSMART guide §3.3 explicitly warns against baking projected
+  // coords into IfcSite.ObjectPlacement instead of using IfcMapConversion.
   // Pick-on-map and the bbox sanity gate both fail in this case because
   // the local origin is metres-far from the geometry; tell the user *why*
   // so they can re-author the file rather than fight the UI.
   const bakedProjectedOrigin = detectBakedProjectedOrigin(metadata);
-  useEffect(() => {
-    if (!bakedProjectedOrigin) {
-      return;
-    }
-    const { x, y, z } = bakedProjectedOrigin;
-    emitLog({
-      level: "warn",
-      message:
-        `IfcSite.ObjectPlacement at (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(1)}) ` +
-        `looks like baked-in projected coordinates. Per buildingSMART's ` +
-        `"User Guide for Geo-referencing in IFC" §3.3, the offset belongs ` +
-        `in IfcMapConversion (IFC4) or ePSet_MapConversion (IFC2X3), not ` +
-        `in IfcSite.ObjectPlacement.`,
-    });
-  }, [bakedProjectedOrigin]);
-
-  // Surface a useful log when we couldn't derive sensible Helmert params
-  // — either the IfcSite reference is outside the CRS area of use, or the
-  // file's IfcMapConversion is a placeholder that lands geometry at the
-  // projected CRS's false origin. Skipped when we already warned about
-  // baked-in coords above (that's the underlying cause and the message
-  // would be misleading).
-  useEffect(() => {
-    if (bakedProjectedOrigin) {
-      return;
-    }
-    const isOutsideOfCrs =
-      activeCrs &&
-      rawEffectiveParameters !== null &&
-      effectiveHelmertParameters === null;
-
-    if (isOutsideOfCrs) {
-      const source = metadata.existingGeoref
-        ? "Existing IfcMapConversion"
-        : "Anchor parameters";
+  useEffect(
+    function warnIfProjectedOriginBakedIntoSite() {
+      if (!bakedProjectedOrigin) {
+        return;
+      }
+      const { x, y, z } = bakedProjectedOrigin;
       emitLog({
         level: "warn",
         message:
-          `${source} places geometry outside the area of ` +
-          `use for EPSG:${activeCrs.code}` +
-          (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "") +
-          ` — likely a placeholder transform. Use the Survey points tab ` +
-          `to anchor manually, or switch CRS.`,
+          `IfcSite.ObjectPlacement at (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(1)}) ` +
+          `looks like baked-in projected coordinates. Per buildingSMART's ` +
+          `"User Guide for Geo-referencing in IFC" §3.3, the offset belongs ` +
+          `in IfcMapConversion (IFC4) or ePSet_MapConversion (IFC2X3), not ` +
+          `in IfcSite.ObjectPlacement.`,
       });
-    } else if (
-      activeCrs &&
-      metadata.siteReference &&
-      !metadata.existingGeoref &&
-      effectiveHelmertParameters === null
-    ) {
-      // Fell through to siteReference seed but it was rejected.
-      const { latitude, longitude } = metadata.siteReference;
-      emitLog({
-        level: "warn",
-        message:
-          `IfcSite reference (${longitude.toFixed(4)}°E, ${latitude.toFixed(4)}°N) ` +
-          `is outside the area of use for EPSG:${activeCrs.code}` +
-          (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "") +
-          ". Pick a different CRS, or use the Survey points tab to enter " +
-          "a known point manually.",
-      });
-    }
-  }, [
-    activeCrs,
-    metadata.siteReference,
-    metadata.existingGeoref,
-    rawEffectiveParameters,
-    effectiveHelmertParameters,
-    bakedProjectedOrigin,
-  ]);
+    },
+    [bakedProjectedOrigin],
+  );
+
+  // Two failure modes: IfcSite reference outside the CRS area of use, or
+  // a placeholder IfcMapConversion that lands geometry at the projected
+  // CRS's false origin. Skipped when we already warned about baked-in
+  // coords above (that's the underlying cause and the message would be
+  // misleading).
+  useEffect(
+    function warnIfHelmertOutsideAreaOfUse() {
+      if (bakedProjectedOrigin) {
+        return;
+      }
+      const isOutsideOfCrs =
+        activeCrs &&
+        rawEffectiveParameters !== null &&
+        effectiveHelmertParameters === null;
+
+      if (isOutsideOfCrs) {
+        const source = metadata.existingGeoref
+          ? "Existing IfcMapConversion"
+          : "Anchor parameters";
+        emitLog({
+          level: "warn",
+          message:
+            `${source} places geometry outside the area of ` +
+            `use for EPSG:${activeCrs.code}` +
+            (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "") +
+            ` — likely a placeholder transform. Use the Survey points tab ` +
+            `to anchor manually, or switch CRS.`,
+        });
+      } else if (
+        activeCrs &&
+        metadata.siteReference &&
+        !metadata.existingGeoref &&
+        effectiveHelmertParameters === null
+      ) {
+        // Fell through to siteReference seed but it was rejected.
+        const { latitude, longitude } = metadata.siteReference;
+        emitLog({
+          level: "warn",
+          message:
+            `IfcSite reference (${longitude.toFixed(4)}°E, ${latitude.toFixed(4)}°N) ` +
+            `is outside the area of use for EPSG:${activeCrs.code}` +
+            (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "") +
+            ". Pick a different CRS, or use the Survey points tab to enter " +
+            "a known point manually.",
+        });
+      }
+    },
+    [
+      activeCrs,
+      metadata.siteReference,
+      metadata.existingGeoref,
+      rawEffectiveParameters,
+      effectiveHelmertParameters,
+      bakedProjectedOrigin,
+    ],
+  );
 
   function handleDownloadSidecar() {
     if (!effectiveHelmertParameters || !activeCrs) {
@@ -288,8 +303,8 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     let text: string;
     try {
       text = await file.text();
-    } catch (cause) {
-      reportError(`Couldn't read sidecar file: ${String(cause)}`);
+    } catch (error) {
+      reportError(`Couldn't read sidecar file: ${String(error)}`);
       return;
     }
     const parsed = parseSidecar(text);
@@ -392,7 +407,8 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                         ? "Pick disabled: this file bakes projected coordinates into IfcSite.ObjectPlacement instead of using IfcMapConversion (see diagnostics). Re-author the file with a small local origin to enable picking."
                         : !activeCrs
                           ? "Set a target CRS before picking an anchor."
-                          : activeCrs.accuracy.kind === "degraded-override-failed"
+                          : activeCrs.accuracy.kind ===
+                              "degraded-override-failed"
                             ? "Pick disabled: precision grid for this CRS isn't loaded — clicking would record a ~170 m–wrong survey point. Retry from the CRS card."
                             : null
                     }
@@ -451,6 +467,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           onAnchorPicked={handleAnchorPicked}
           onCancelPickAnchor={cancelPickAnchor}
           residualsPoints={lastFitPoints}
+          anchorProvenance={effectiveAnchorProvenance}
         />
       </section>
     </div>

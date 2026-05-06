@@ -185,11 +185,19 @@ export function initialEpsgFromMetadata(metadata: IfcMetadata): string {
   return "";
 }
 
-/** Convert the IFC TrueNorth direction ratios to a rotation in radians. */
-export function trueNorthRotation(metadata: IfcMetadata): number {
-  return metadata.trueNorth
-    ? Math.atan2(metadata.trueNorth.ordinate, metadata.trueNorth.abscissa)
-    : 0;
+/**
+ * Convert the IFC TrueNorth direction ratios to a rotation in radians.
+ *
+ * TrueNorth encodes `(sin θ, cos θ)` (north-vector in the local frame), so
+ * recovery is `atan2(abscissa, ordinate)`. This is the mirror of the
+ * IfcMapConversion XAxis recovery — see `docs/helmert-parameters.md`.
+ *
+ * Pass `null` (no TrueNorth in file) to get 0.
+ */
+export function trueNorthRotation(
+  trueNorth: { abscissa: number; ordinate: number } | null,
+): number {
+  return trueNorth ? Math.atan2(trueNorth.abscissa, trueNorth.ordinate) : 0;
 }
 
 /** Convert IFC direction ratios (X-axis components) to a rotation in degrees. */
@@ -230,7 +238,7 @@ export function deriveEffectiveParameters(
     xScale: 1,
     yScale: 1,
     zScale: 1,
-    rotation: trueNorthRotation(metadata),
+    rotation: trueNorthRotation(metadata.trueNorth),
     easting: projected.value.x,
     northing: projected.value.y,
     height: metadata.siteReference.elevation,
@@ -370,7 +378,7 @@ export function applyPickedAnchor(arguments_: {
     xScale: 1,
     yScale: 1,
     zScale: 1,
-    rotation: trueNorthRotation(metadata),
+    rotation: trueNorthRotation(metadata.trueNorth),
     easting: projected.value.x,
     northing: projected.value.y,
     height: 0,

@@ -16,6 +16,7 @@ import {
   type OverlayId,
 } from "../layers/registry";
 import type { CustomOverlayHandle, OverlayDef } from "../layers/types";
+import { runWhenMapReady } from "./run-when-map-ready";
 
 interface UseMapLayersArguments {
   basemap: BasemapId;
@@ -53,7 +54,7 @@ export function useMapLayers(
     // lazy-import of a custom overlay is in flight.
     let cancelled = false;
 
-    const apply = () => {
+    const cleanupReady = runWhenMapReady(map, () => {
       syncCustomBasemaps(map, customBasemaps, basemap);
       syncBasemaps(map, basemap);
       syncRasterOverlays(map, overlays);
@@ -68,25 +69,11 @@ export function useMapLayers(
           message: `Map layer setup failed: ${error instanceof Error ? error.message : String(error)}`,
         });
       });
-    };
+    });
 
-    if (map.isStyleLoaded()) {
-      apply();
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const handleLoad = () => {
-      if (cancelled) {
-        return;
-      }
-      apply();
-    };
-    map.on("load", handleLoad);
     return () => {
       cancelled = true;
-      map.off("load", handleLoad);
+      cleanupReady();
     };
   }, [mapRef, basemap, overlays, customBasemaps]);
 

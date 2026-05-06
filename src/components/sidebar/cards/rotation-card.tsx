@@ -120,7 +120,7 @@ export function RotationCard({
               formatOptions={{ maximumFractionDigits: 6 }}
               description={
                 hasAsymmetricXY && parameters
-                  ? `↳ X ${parameters.xScale.toFixed(6)} · Y ${parameters.yScale.toFixed(6)} (file-authored anisotropy; not editable here)`
+                  ? `↳ X ${parameters.xScale} · Y ${parameters.yScale} (file-authored anisotropy; not editable here)`
                   : null
               }
             />

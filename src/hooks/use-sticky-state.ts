@@ -69,7 +69,6 @@ export function useStickyState<T>(
             }
             return;
           }
-          // Without a schema we trust the other tab — they're the same app.
           setValue(parsed as T);
         } catch {
           // Malformed JSON in the storage event — ignore.

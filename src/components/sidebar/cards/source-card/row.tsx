@@ -18,7 +18,7 @@ export function Row({ label, value, wrap = false }: RowProps) {
       <dt className="text-slate-600">{label}</dt>
 
       <dd
-        className={`font-mono text-slate-900 ${wrap ? "wrap-break-word text-right" : "truncate"}`}
+        className={`font-mono tabular-nums text-slate-900 ${wrap ? "wrap-break-word text-right" : "truncate"}`}
       >
         {value}
       </dd>

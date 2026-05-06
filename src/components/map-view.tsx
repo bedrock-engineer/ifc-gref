@@ -7,6 +7,7 @@ import { projectLocalToWgs84, type CrsDef } from "#modules/crs";
 import { emitLog } from "../lib/log";
 import type { MapReferences } from "./map/derive-references";
 import type { HelmertParams, PointPair } from "#modules/helmert/solve";
+import type { Provenance } from "#state/workspace";
 import { LayersPanel } from "./map/controls/layers-panel";
 import { SearchBox } from "./map/controls/search-box";
 import { ViewToggle, type ViewMode } from "./map/controls/view-toggle";
@@ -17,10 +18,7 @@ import {
 } from "./map/hooks/use-anchor-picker";
 import { computeAxesGeometry, useAxesLayer } from "./map/hooks/use-axes-layer";
 import { useCrsAutoZoom } from "./map/hooks/use-crs-auto-zoom";
-import {
-  frameCamera,
-  useMapOverlays,
-} from "./map/hooks/use-map-overlays";
+import { frameCamera, useMapOverlays } from "./map/hooks/use-map-overlays";
 import { useMapInit } from "./map/hooks/use-map-init";
 import { useMapLayers } from "./map/hooks/use-map-layers";
 import { useResidualsLayer } from "./map/hooks/use-residuals-layer";
@@ -76,6 +74,10 @@ export interface MapViewProps {
   /** Point pairs from the most recent least-squares fit; drives the
    *  fitted-dot overlay. Null when no fit has run. */
   residualsPoints: Array<PointPair> | null;
+  /** Where the current anchor came from. Drives the auto-reframe rule: any
+   *  non-`manual` provenance with new params is a discrete user action and
+   *  should reframe the camera; `manual` is a live edit and shouldn't. */
+  anchorProvenance: Provenance;
 }
 
 /**
@@ -93,6 +95,7 @@ export function MapView({
   onAnchorPicked,
   onCancelPickAnchor,
   residualsPoints,
+  anchorProvenance,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<ViewMode>("2d");
@@ -194,6 +197,33 @@ export function MapView({
   );
   useCrsAutoZoom(mapRef, activeCrs, hasAnchor);
   useMapOverlays(mapRef, overlaySignals);
+
+  // Auto-reframe on discrete anchor changes. The trigger is `parameters`
+  // identity (the reducer hands out a fresh reference on every dispatch),
+  // gated by provenance: `manual` is a live slider edit and stays put;
+  // every other provenance (file/map/survey/default) is a discrete event
+  // worth reframing for, including repeated solves at the same source-rank.
+  // 3D handles its own flyTo in apply-anchor.ts, so this 2D path is gated
+  // off when 3D is active.
+  const lastFramedParamsRef = useRef<HelmertParams | null>(null);
+  useEffect(function autoFrameOnDiscreteChange() {
+    if (parameters === lastFramedParamsRef.current) {
+      return;
+    }
+    lastFramedParamsRef.current = parameters;
+    if (parameters === null || anchorProvenance === "manual") {
+      return;
+    }
+    if (effectiveView !== "2d") {
+      return;
+    }
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
+    frameCamera(map, overlaySignals, { duration: 600 });
+  }, [parameters, anchorProvenance, effectiveView, overlaySignals, mapRef]);
+
   useAxesLayer(mapRef, axesGeometry);
   useResidualsLayer(mapRef, residualsPoints, parameters, activeCrs);
   useThreeDLayer(mapRef, {
@@ -234,9 +264,9 @@ export function MapView({
           {createPortal(
             <ZoomToModel
               isDisabled={
-                overlaySignals.footprint === null
-                && overlaySignals.mapConversion === null
-                && overlaySignals.siteReference === null
+                overlaySignals.footprint === null &&
+                overlaySignals.mapConversion === null &&
+                overlaySignals.siteReference === null
               }
               onPress={() => {
                 const map = mapRef.current;

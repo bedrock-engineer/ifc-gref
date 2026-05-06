@@ -82,11 +82,15 @@ function teardown(
   threeDRef: RefObject<ThreeDLayer | null>,
   meshOriginRef: RefObject<MeshOrigin | null>,
 ): void {
-  map.easeTo({ pitch: 0, bearing: 0, duration: 300 });
+  // Effect re-runs on every `parameters` change. When already in 2D with no
+  // 3D layer to dispose, this teardown is a no-op — bail before the easeTo
+  // so it doesn't clobber a fitBounds animation kicked off by another effect
+  // in the same render.
   const threeD = threeDRef.current;
   if (!threeD) {
     return;
   }
+  map.easeTo({ pitch: 0, bearing: 0, duration: 300 });
   if (map.getLayer(threeD.layer.id)) {
     map.removeLayer(threeD.layer.id);
   }

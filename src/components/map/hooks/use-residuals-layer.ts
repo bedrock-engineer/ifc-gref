@@ -7,6 +7,7 @@ import {
   type PointPair,
 } from "#modules/helmert/solve";
 import { RESIDUAL_FIT_COLOR, RESIDUALS_FIT_LAYER_ID, RESIDUALS_SOURCE_ID } from "../style";
+import { runWhenMapReady } from "./run-when-map-ready";
 
 /**
  * Draws a teal dot at each control point's *fitted* position — where the
@@ -33,29 +34,10 @@ export function useResidualsLayer(
     }
 
     const data = buildFeatureCollection(points, params, activeCrs);
-
-    const apply = () => {
+    return runWhenMapReady(map, () => {
       syncResidualSource(map, data);
       syncNumberMarkers(map, markersRef, data);
-    };
-
-    if (map.isStyleLoaded()) {
-      apply();
-      return;
-    }
-
-    // `isStyleLoaded()` can stay false for long stretches when terrain
-    // or tiles are mid-fetch, and `styledata` events during that window
-    // keep reporting `false`. `idle` fires once the map has fully
-    // settled — a strong guarantee that addSource/addLayer will succeed.
-    const onIdle = () => {
-      map.off("idle", onIdle);
-      apply();
-    };
-    map.on("idle", onIdle);
-    return () => {
-      map.off("idle", onIdle);
-    };
+    });
   }, [mapRef, points, params, activeCrs]);
 
   useEffect(() => {

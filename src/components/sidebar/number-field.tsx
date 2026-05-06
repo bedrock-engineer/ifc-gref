@@ -54,7 +54,7 @@ export function NumberField({
 }: NumberFieldProps) {
   return (
     <AriaNumberField
-      value={value ?? Number.NaN}
+      value={value ?? undefined}
       onChange={(next) => {
         if (Number.isFinite(next)) {
           onChange(next);
@@ -65,7 +65,7 @@ export function NumberField({
       maxValue={maxValue}
       isDisabled={isDisabled}
       formatOptions={formatOptions}
-      aria-label={label ? undefined : ariaLabel}
+      aria-label={ariaLabel}
       className="flex flex-col gap-0.5"
     >
       {label && (

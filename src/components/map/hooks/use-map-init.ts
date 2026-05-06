@@ -64,6 +64,10 @@ export function useMapInit(
 
       mapRef.current = map;
 
+      if (import.meta.env.DEV) {
+        (globalThis as unknown as { __map?: maplibregl.Map }).__map = map;
+      }
+
       // eslint-disable-next-line @eslint-react/set-state-in-effect
       setPortals({
         viewToggle: viewToggle.element,
@@ -76,6 +80,9 @@ export function useMapInit(
         setPortals(null);
         map.remove();
         mapRef.current = null;
+        if (import.meta.env.DEV) {
+          delete (globalThis as unknown as { __map?: maplibregl.Map }).__map;
+        }
       };
     },
     [containerRef],

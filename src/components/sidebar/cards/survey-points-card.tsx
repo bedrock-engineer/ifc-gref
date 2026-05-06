@@ -217,7 +217,7 @@ export function SurveyPointsCard({
           hint="Refine with ≥1 additional point."
           disabled={!hasSite}
         />
-        
+
         <ModeOption
           value="ignore-existing"
           label="Survey points only"
@@ -238,9 +238,8 @@ export function SurveyPointsCard({
             </span>
 
             <span>
-              <span className="font-medium text-slate-700">Projected</span>{" "}
-              ({activeCrs ? `EPSG:${activeCrs.code}` : "CRS"}) [
-              {crsUnit.label}]
+              <span className="font-medium text-slate-700">Projected</span> (
+              {activeCrs ? `EPSG:${activeCrs.code}` : "CRS"}) [{crsUnit.label}]
             </span>
           </div>
 
@@ -370,6 +369,7 @@ function PointPairAxesGrid({
       ))}
 
       <span>Engineering</span>
+
       {AXES.map((axis) => (
         <NumberField
           key={`e-${axis}`}
@@ -383,21 +383,22 @@ function PointPairAxesGrid({
       ))}
 
       <span>Projected</span>
-      {projected
-        ? AXES.map((axis) => (
-            <NumberField
-              key={`p-${axis}`}
-              ariaLabel={`${ariaPrefix} projected ${axis.toUpperCase()}`}
-              value={projected[axis]}
-              formatOptions={projectedFormat}
-              hideSteppers
-              isDisabled={isDisabled}
-              onChange={(v) => onProjected?.(axis, v)}
-            />
-          ))
-        : projectedFallback && (
-            <div className="col-span-3">{projectedFallback}</div>
-          )}
+
+      {projected ? (
+        AXES.map((axis) => (
+          <NumberField
+            key={`p-${axis}`}
+            ariaLabel={`${ariaPrefix} projected ${axis.toUpperCase()}`}
+            value={projected[axis]}
+            formatOptions={projectedFormat}
+            hideSteppers
+            isDisabled={isDisabled}
+            onChange={(v) => onProjected?.(axis, v)}
+          />
+        ))
+      ) : projectedFallback ? (
+        <div className="col-span-3">{projectedFallback}</div>
+      ) : null}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   IFC_Y_AXIS_COLOR,
   NORTH_AXIS_COLOR,
 } from "../style";
+import { runWhenMapReady } from "./run-when-map-ready";
 
 const AXIS_LENGTH_METRES = 20;
 
@@ -100,18 +101,10 @@ export function useAxesLayer(
       return;
     }
 
-    const apply = () => {
+    return runWhenMapReady(map, () => {
       syncLines(map, geometry);
       syncLabels(map, markersRef, geometry);
-    };
-
-    // Once the source is on the map, setData/setLngLat work regardless of
-    // isStyleLoaded() — only the first add needs the style to be ready.
-    if (map.getSource(AXES_SOURCE_ID) || map.isStyleLoaded()) {
-      apply();
-    } else {
-      void map.once("load", apply);
-    }
+    });
   }, [mapRef, geometry]);
 
   useEffect(() => {

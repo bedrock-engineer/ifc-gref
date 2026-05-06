@@ -31,8 +31,11 @@ export function SourceCard({
     <Card title="Source" headerAside={<LevelBadge level={level} />}>
       <dl className="space-y-1 text-sm">
         <Row label="Name" value={filename} />
+        
         <Row label="Schema" value={metadata.schema} />
+        
         <Row label="Length unit" value={metadata.lengthUnit} />
+        
         <Row
           label="IfcSite reference"
           value={
@@ -43,8 +46,17 @@ export function SourceCard({
             />
           }
         />
-        <Row label="Local origin" value={formatLocalOrigin(metadata.localOrigin)} />
-        <Row label="TrueNorth" value={formatTrueNorth(metadata.trueNorth)} />
+
+        <Row
+          label="Local origin"
+          value={formatLocalOrigin(metadata.localOrigin)}
+        />
+
+        <Row
+          label="TrueNorth"
+          wrap
+          value={<TrueNorthValue tn={metadata.trueNorth} />}
+        />
       </dl>
 
       <p className="text-xs text-slate-500">{loGeorefDescription(level)}</p>
@@ -142,7 +154,9 @@ function SiteReferenceValue({
       : `Outside EPSG:${activeCrsCode} area of use; not used on map.`;
   return (
     <span className="text-rose-700" title={tooltip}>
-      <span aria-hidden="true" className="mr-1">⚠</span>
+      <span aria-hidden="true" className="mr-1">
+        ⚠
+      </span>
       {text}
     </span>
   );
@@ -152,13 +166,19 @@ function formatLocalOrigin(origin: IfcMetadata["localOrigin"]): string {
   if (!origin) {
     return "—";
   }
-  return `(${origin.x.toFixed(6)}, ${origin.y.toFixed(6)}, ${origin.z.toFixed(6)})`;
+  return `(${origin.x}, ${origin.y}, ${origin.z})`;
 }
 
-function formatTrueNorth(tn: IfcMetadata["trueNorth"]): string {
+function TrueNorthValue({ tn }: { tn: IfcMetadata["trueNorth"] }) {
   if (!tn) {
-    return "—";
+    return <>—</>;
   }
   const degrees = directionRatiosToDegrees(tn.abscissa, tn.ordinate);
-  return `${tn.abscissa.toFixed(4)}, ${tn.ordinate.toFixed(4)} (${degrees.toFixed(2)}°)`;
+  return (
+    <>
+      <span className="block">{degrees.toFixed(2)}°</span>
+      <span className="block text-xs">abscissa {tn.abscissa.toFixed(4)}</span>
+      <span className="block text-xs">ordinate {tn.ordinate.toFixed(4)}</span>
+    </>
+  );
 }

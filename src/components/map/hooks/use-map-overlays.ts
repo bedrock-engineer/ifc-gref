@@ -7,6 +7,7 @@ import {
   FOOTPRINT_LINE_LAYER_ID,
   FOOTPRINT_SOURCE_ID,
 } from "../style";
+import { runWhenMapReady } from "./run-when-map-ready";
 
 // High-contrast black for the marker glyph + label. Accent teal disappears
 // on busy basemaps (satellite especially); the label's white text-shadow
@@ -22,26 +23,14 @@ export interface MapOverlaySignals {
   siteReference: LngLat | null;
 }
 
-type Source = "footprint" | "mapConversion" | "siteReference";
-
-// Authority ranking — used to decide whether a newly-available signal
-// outranks whatever we last framed the camera to. Footprint is most
-// reliable (it's the building's actual extent, computed via the live
-// Helmert + proj4); IfcMapConversion is the precise projected anchor;
-// IfcSite RefLat/RefLon is the legacy/approximate fallback.
-const SOURCE_RANK: Record<Source, number> = {
-  footprint: 3,
-  mapConversion: 2,
-  siteReference: 1,
-};
-
 /**
  * 2D overlays driven by the model's live georef state:
  * - footprint convex-hull polygon
  * - one marker per available reference source (IfcMapConversion, IfcSite),
  *   each with its own glyph and a persistent small-font label
- * - camera framing that promotes from IfcSite → IfcMapConversion → footprint
- *   as more authoritative signals materialise
+ *
+ * Camera framing is owned by the parent (see `MapView.autoFrameOnDiscreteChange`)
+ * — driven by anchor provenance, not by the data on this hook's signal.
  */
 export function useMapOverlays(
   mapRef: RefObject<MlMap | null>,
@@ -49,12 +38,6 @@ export function useMapOverlays(
 ): void {
   const mapConversionMarkerRef = useRef<Marker | null>(null);
   const siteMarkerRef = useRef<Marker | null>(null);
-  // Tracks the highest-authority source we've already framed the camera
-  // to. Reframing is gated on rank comparison — equal-rank updates (e.g.
-  // live edits to mapConversion's lat/lon while we're already framed at
-  // mapConversion level) are deliberately ignored, otherwise the camera
-  // would chase every keystroke.
-  const lastFramedRef = useRef<Source | null>(null);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -62,7 +45,7 @@ export function useMapOverlays(
       return;
     }
 
-    const apply = () => {
+    return runWhenMapReady(map, () => {
       syncMarker(
         map,
         mapConversionMarkerRef,
@@ -76,14 +59,7 @@ export function useMapOverlays(
         "siteReference",
       );
       syncFootprint(map, signals.footprint);
-      maybeFrame(map, signals, lastFramedRef);
-    };
-
-    if (map.isStyleLoaded()) {
-      apply();
-    } else {
-      void map.once("load", apply);
-    }
+    });
   }, [mapRef, signals]);
 
   // Tear down markers on unmount. Sources/layers live on the map and are
@@ -259,46 +235,6 @@ function syncFootprint(
       map.removeLayer(FOOTPRINT_LINE_LAYER_ID);
     }
     map.removeSource(FOOTPRINT_SOURCE_ID);
-  }
-}
-
-function bestSource(signals: MapOverlaySignals): Source | null {
-  if (signals.footprint != null && signals.footprint.length >= 3) {
-    return "footprint";
-  }
-  if (signals.mapConversion) {
-    return "mapConversion";
-  }
-  if (signals.siteReference) {
-    return "siteReference";
-  }
-  return null;
-}
-
-function maybeFrame(
-  map: MlMap,
-  signals: MapOverlaySignals,
-  lastFramedRef: RefObject<Source | null>,
-): void {
-  const current = bestSource(signals);
-
-  // No content at all (e.g. file unloaded) — reset so the next load frames
-  // from rank zero.
-  if (current === null) {
-    lastFramedRef.current = null;
-    return;
-  }
-
-  const lastRank = lastFramedRef.current
-    ? SOURCE_RANK[lastFramedRef.current]
-    : 0;
-  const currentRank = SOURCE_RANK[current];
-
-  // Reframe only on authority promotion. Equal-rank updates (live param
-  // edits while already framed at the same level) are intentional no-ops.
-  if (currentRank > lastRank) {
-    frameCamera(map, signals);
-    lastFramedRef.current = current;
   }
 }
 
