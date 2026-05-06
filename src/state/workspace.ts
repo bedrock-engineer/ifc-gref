@@ -92,43 +92,6 @@ export function initialAnchor(metadata: IfcMetadata): Anchor {
 }
 
 /**
- * Threshold (metres) above which an IfcSite ObjectPlacement looks like
- * baked-in projected coordinates rather than a legitimate local frame.
- * Sites larger than ~10 km on a side are unusual; UTM/RD/state-plane
- * coords are typically 100k–10M.
- */
-const BAKED_PROJECTED_THRESHOLD_M = 10_000;
-
-/**
- * Files in the wild sometimes bake projected (UTM, RD, state plane, …)
- * coordinates into `IfcSite.ObjectPlacement` instead of using a small
- * local frame plus IfcMapConversion. The buildingSMART "User Guide for
- * Geo-referencing in IFC" (§3.3, Important Note 5) explicitly calls this
- * out: "It is not sufficient to simply apply an offset and rotation to
- * the map projection coordinates to create the local coordinate system."
- *
- * We can't usefully georeference such files in-tool — the local origin is
- * far from the geometry, so pick-on-map and the bbox sanity gate both
- * fall over. Detect the pattern so the UI can explain it to the user.
- */
-export function detectBakedProjectedOrigin(
-  metadata: IfcMetadata,
-): { x: number; y: number; z: number } | null {
-  if (metadata.existingGeoref) {
-    return null;
-  }
-  const origin = metadata.localOrigin;
-  if (!origin) {
-    return null;
-  }
-  const magnitude = Math.hypot(origin.x, origin.y);
-  if (magnitude < BAKED_PROJECTED_THRESHOLD_M) {
-    return null;
-  }
-  return origin;
-}
-
-/**
  * Reducer factory that closes over `existing` so `resetToFile` can pull
  * the file-provided Helmert without the caller having to thread it
  * through the action payload. Re-invoked each render — `useReducer`
@@ -206,43 +169,6 @@ export function directionRatiosToDegrees(
   ordinate: number,
 ): number {
   return (Math.atan2(ordinate, abscissa) * 180) / Math.PI;
-}
-
-/**
- * Files with IfcSite RefLat/RefLon but no IfcMapConversion carry enough
- * info to place the model geographically. Project lat/lon through the
- * active CRS (scale 1, rotation = TrueNorth) to get a seed Helmert so 3D
- * renders and the anchor card shows something editable.
- */
-export function deriveEffectiveParameters(
-  parameters: HelmertParams | null,
-  activeCrs: CrsDef | null,
-  metadata: IfcMetadata,
-): HelmertParams | null {
-  if (parameters !== null) {
-    return parameters;
-  }
-  if (!metadata.siteReference || !activeCrs) {
-    return null;
-  }
-  const projected = transformWgs84ToProjected({
-    def: activeCrs,
-    longitude: metadata.siteReference.longitude,
-    latitude: metadata.siteReference.latitude,
-    elevation: metadata.siteReference.elevation,
-  });
-  if (projected.isErr()) {
-    return null;
-  }
-  return {
-    xScale: 1,
-    yScale: 1,
-    zScale: 1,
-    rotation: trueNorthRotation(metadata.trueNorth),
-    easting: projected.value.x,
-    northing: projected.value.y,
-    height: metadata.siteReference.elevation,
-  };
 }
 
 /**

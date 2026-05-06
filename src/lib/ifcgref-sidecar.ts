@@ -50,14 +50,14 @@ const sidecarSchema = z.object({
     verticalDatum: z.string().nullable(),
   }),
   mapConversion: z.object({
-    eastings: z.number().finite(),
-    northings: z.number().finite(),
-    orthogonalHeight: z.number().finite(),
-    xAxisAbscissa: z.number().finite(),
-    xAxisOrdinate: z.number().finite(),
-    horizontalXScale: z.number().finite(),
-    horizontalYScale: z.number().finite(),
-    verticalScale: z.number().finite(),
+    eastings: z.number(),
+    northings: z.number(),
+    orthogonalHeight: z.number(),
+    xAxisAbscissa: z.number(),
+    xAxisOrdinate: z.number(),
+    horizontalXScale: z.number(),
+    horizontalYScale: z.number(),
+    verticalScale: z.number(),
   }),
 });
 
@@ -112,8 +112,8 @@ export function parseSidecar(text: string): Result<Sidecar, SidecarError> {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
-  } catch (cause) {
-    return err({ kind: "invalid-json", cause });
+  } catch (error) {
+    return err({ kind: "invalid-json", cause: error });
   }
 
   // Pre-check version and app before Zod so the user gets a precise error

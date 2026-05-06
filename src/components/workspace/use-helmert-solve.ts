@@ -111,13 +111,13 @@ export function useHelmertSolve({
     const p = solved.value;
     const summary =
       points.length >= 2 ? summarizeResiduals(computeResiduals(points, p)) : null;
-    const scaleStr =
+    const scaleString =
       p.xScale === p.yScale && p.yScale === p.zScale
         ? `scale=${p.xScale.toFixed(6)}`
         : `xScale=${p.xScale.toFixed(6)}, yScale=${p.yScale.toFixed(6)}, zScale=${p.zScale.toFixed(6)}`;
     emitLog({
       message:
-        `Solved Helmert (${request.mode}): E=${p.easting.toFixed(3)}, N=${p.northing.toFixed(3)}, h=${p.height.toFixed(3)}, rot=${p.rotation.toFixed(4)} rad, ${scaleStr}` +
+        `Solved Helmert (${request.mode}): E=${p.easting.toFixed(3)}, N=${p.northing.toFixed(3)}, h=${p.height.toFixed(3)}, rot=${p.rotation.toFixed(4)} rad, ${scaleString}` +
         (summary
           ? `, RMSE XY=${summary.rmsXY.toFixed(3)}, RMSE Z=${summary.rmsZ.toFixed(3)}`
           : ""),

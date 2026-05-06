@@ -1,9 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any,
                   @typescript-eslint/no-unsafe-assignment,
                   @typescript-eslint/no-unsafe-member-access,
-                  @typescript-eslint/no-unsafe-return,
-                  @typescript-eslint/no-unsafe-call,
-                  @typescript-eslint/no-base-to-string
+                  @typescript-eslint/no-unsafe-return
 */
 
 /* web-ifc's public API is typed as `any` for entity reads

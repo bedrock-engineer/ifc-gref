@@ -396,9 +396,9 @@ function PointPairAxesGrid({
             onChange={(v) => onProjected?.(axis, v)}
           />
         ))
-      ) : projectedFallback ? (
+      ) : (projectedFallback ? (
         <div className="col-span-3">{projectedFallback}</div>
-      ) : null}
+      ) : null)}
     </div>
   );
 }

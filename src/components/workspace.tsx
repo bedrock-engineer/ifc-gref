@@ -7,7 +7,6 @@ import {
   useState,
 } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
-import { projectLocalToWgs84 } from "#modules/crs";
 import { type HelmertParams } from "#modules/helmert/solve";
 import { emitLog } from "../lib/log";
 import {
@@ -18,18 +17,27 @@ import {
   sidecarToParams,
   type SidecarError,
 } from "../lib/ifcgref-sidecar";
-import { unitToMetres } from "#modules/units/convert";
 import {
   anchorParams,
-  anchorProvenance,
-  deriveEffectiveParameters,
-  detectBakedProjectedOrigin,
   initialAnchor,
   makeAnchorReducer,
 } from "#state/workspace";
+import {
+  deriveGeorefView,
+  deriveMapReferences,
+  deriveOverlaySignals,
+} from "#state/georef-status/findings";
+import {
+  findingKey,
+  type MapOverlaySignals,
+} from "#state/georef-status/types";
+import {
+  derivePickBlockedReason,
+  deriveSaveBlockedReason,
+  findingToLogMessage,
+} from "#state/georef-status/format";
 import type { IfcMetadata } from "#modules/ifc/worker";
-import { deriveMapReferences } from "./map/derive-references";
-import { MapView } from "./map-view";
+import { MapView, type MapViewHandle } from "./map-view";
 import { AnchorCard } from "./sidebar/cards/anchor-card";
 import { RotationCard } from "./sidebar/cards/rotation-card";
 import { SaveCard } from "./sidebar/cards/save-card";
@@ -38,6 +46,7 @@ import { SurveyPointsCard } from "./sidebar/cards/survey-points-card";
 import { TargetCrsCard } from "./sidebar/cards/target-crs-card";
 import { Sidebar } from "./sidebar/sidebar";
 import { useAnchorPick } from "./workspace/use-anchor-pick";
+import { useExtractedFootprint } from "./workspace/use-extracted-footprint";
 import { useHelmertSolve } from "./workspace/use-helmert-solve";
 import { useIfcWrite } from "./workspace/use-ifc-write";
 import { useTargetCrs } from "./workspace/use-target-crs";
@@ -66,6 +75,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
       currentParams: anchorParams(anchor),
       onReproject: (params) => {
         dispatchAnchor({ type: "paramsReplaced", params });
+        frameNow(nextSignalsAfter(params));
       },
       onError: reportError,
     });
@@ -77,68 +87,99 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     metadata.verticalDatumHint,
   );
 
-  // `anchor` holds the user/solver-owned params; `rawEffectiveParameters`
-  // falls back to a seed derived from IfcSite lat/lon when no anchor is
-  // set yet, so downstream consumers always have something to render.
-  const rawEffectiveParameters = deriveEffectiveParameters(
-    anchorParams(anchor),
-    activeCrs,
-    metadata,
+  // The wide georef view: effective Helmert + provenance + map references
+  // + bakedProjectedOrigin + CRS-scoped findings, in one pure derivation.
+  // The bbox sanity-gate proj4 round-trip happens inside `deriveGeorefView`
+  // and is what makes `useMemo` worth it (one transform per change vs. one
+  // per render). See docs/crs-datum-grids.md.
+  const view = useMemo(
+    () => deriveGeorefView({ metadata, activeCrs, anchor }),
+    [metadata, activeCrs, anchor],
   );
 
-  // Sanity-gate: validate that applying the helmert to localOrigin lands
-  // inside the active CRS's bbox. Files with placeholder IfcMapConversion
-  // values that slipped past the worker classifier (e.g. (E,N)=(0,0) plus
-  // a TrueNorth-baked rotation, or non-zero values that combine with
-  // localOrigin to produce projected coords near the CRS false-origin)
-  // would otherwise fire a proj4js "Failed to find a grid shift table"
-  // warning per footprint vertex / mesh point. One memoised pre-check
-  // here costs at most one warning per (params, CRS) change and hides
-  // the rest. See docs/crs-datum-grids.md.
-  const effectiveHelmertParameters = useMemo<HelmertParams | null>(() => {
-    if (!rawEffectiveParameters || !activeCrs) {
-      return rawEffectiveParameters;
-    }
-    const origin = metadata.localOrigin ?? { x: 0, y: 0, z: 0 };
-    const wgs84 = projectLocalToWgs84(
-      origin,
-      rawEffectiveParameters,
-      activeCrs,
-    );
-    return wgs84.isOk() ? rawEffectiveParameters : null;
-  }, [rawEffectiveParameters, activeCrs, metadata.localOrigin]);
-
-  const effectiveAnchorProvenance = anchorProvenance(
-    anchor,
-    effectiveHelmertParameters !== null,
-  );
-
-  const references = useMemo(
-    () => deriveMapReferences(metadata, effectiveHelmertParameters, activeCrs),
-    [metadata, effectiveHelmertParameters, activeCrs],
-  );
-
-  // The map silently drops the marker (the value is unusable as a
-  // projected anchor); the log entry plus the inline sidebar badge make
-  // sure the user finds out.
-  const previousSiteOutsideBboxRef = useRef(false);
+  // Single emitter for CRS-scoped findings. Dedupes by `findingKey`
+  const seenFindingsRef = useRef<Set<string>>(new Set());
   useEffect(
-    function warnOnceIfSiteOutsideCrsBbox() {
-      const site = metadata.siteReference;
-      if (
-        references.siteOutsideBbox &&
-        !previousSiteOutsideBboxRef.current &&
-        site
-      ) {
-        const where = activeCrs ? `EPSG:${activeCrs.code}` : "the active CRS";
-        emitLog({
-          level: "warn",
-          message: `IfcSite RefLat/RefLon (${site.latitude.toFixed(6)}, ${site.longitude.toFixed(6)}) is outside ${where} area of use — not shown on map.`,
-        });
+    function emitNewFindings() {
+      for (const finding of view.findings) {
+        const key = findingKey(finding);
+        if (seenFindingsRef.current.has(key)) {
+          continue;
+        }
+        seenFindingsRef.current.add(key);
+        emitLog({ level: "warn", message: findingToLogMessage(finding) });
       }
-      previousSiteOutsideBboxRef.current = references.siteOutsideBbox;
     },
-    [references.siteOutsideBbox, metadata.siteReference, activeCrs],
+    [view.findings],
+  );
+
+  const { effectiveParameters, provenance, references } = view;
+  const pickBlockedReason = derivePickBlockedReason(view, activeCrs);
+  const saveBlockedReason = deriveSaveBlockedReason(view);
+
+  const footprintLocal = useExtractedFootprint();
+
+  // Camera framing is event-driven: solve, pick, reset, reproject, sidecar
+  // each call `frameNow` directly. The two effects below cover data-arrival
+  // syncs that don't have an event source — `effectiveParameters` arriving
+  // from CRS-driven seeding, and `footprintLocal` resolving from the worker.
+  const overlaySignals = useMemo<MapOverlaySignals>(
+    () =>
+      deriveOverlaySignals({
+        references,
+        effectiveParameters,
+        activeCrs,
+        footprintLocal,
+      }),
+    [references, effectiveParameters, activeCrs, footprintLocal],
+  );
+
+  const mapViewRef = useRef<MapViewHandle>(null);
+  const hasFramedRef = useRef(false);
+  const framedWithFootprintRef = useRef(false);
+
+  function frameNow(signals: MapOverlaySignals) {
+    hasFramedRef.current = true;
+    if (signals.footprint !== null) {
+      framedWithFootprintRef.current = true;
+    }
+    mapViewRef.current?.frameToContent(signals);
+  }
+
+  // Recompute overlay signals from a "next" params value before the dispatch
+  // has committed — used by event handlers so the imperative frame call
+  // doesn't have to wait a render cycle for `overlaySignals` to update.
+  function nextSignalsAfter(params: HelmertParams): MapOverlaySignals {
+    const nextReferences = deriveMapReferences(metadata, params, activeCrs);
+    return deriveOverlaySignals({
+      references: nextReferences,
+      effectiveParameters: params,
+      activeCrs,
+      footprintLocal,
+    });
+  }
+
+  useEffect(
+    function frameOnFirstAppearance() {
+      if (!hasFramedRef.current && effectiveParameters) {
+        frameNow(overlaySignals);
+      }
+    },
+    [effectiveParameters, overlaySignals],
+  );
+
+  useEffect(
+    function promoteToFootprint() {
+      if (
+        hasFramedRef.current &&
+        !framedWithFootprintRef.current &&
+        effectiveParameters &&
+        overlaySignals.footprint !== null
+      ) {
+        frameNow(overlaySignals);
+      }
+    },
+    [overlaySignals, effectiveParameters],
   );
 
   const { solve, lastFitPoints } = useHelmertSolve({
@@ -146,13 +187,14 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     activeCrs,
     onSolved: (params) => {
       dispatchAnchor({ type: "solved", params });
+      frameNow(nextSignalsAfter(params));
     },
     onError: reportError,
   });
 
   const { busy, write } = useIfcWrite({
     filename,
-    parameters: effectiveHelmertParameters,
+    parameters: effectiveParameters,
     activeCrs,
     verticalDatum,
     onError: reportError,
@@ -166,113 +208,16 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
   } = useAnchorPick({
     metadata,
     activeCrs,
-    base: effectiveHelmertParameters,
+    base: effectiveParameters,
     onPicked: (params) => {
       dispatchAnchor({ type: "picked", params });
+      frameNow(nextSignalsAfter(params));
     },
     onError: reportError,
   });
 
-  // The worker has already applied a 1.0 fallback at the metadata read
-  // boundary, so downstream values may be off by the unit factor — surface
-  // it so users can spot it in the file-status card and param readouts.
-  const unitResult = unitToMetres(metadata.lengthUnit);
-  useEffect(
-    function warnIfLengthUnitUnknown() {
-      if (unitResult.isErr()) {
-        emitLog({
-          level: "warn",
-          message: `Unknown IFC length unit '${unitResult.error.name}' — treated as metres at the worker boundary; numeric values may be off by the unit factor`,
-        });
-      }
-    },
-    [unitResult],
-  );
-
-  // The buildingSMART guide §3.3 explicitly warns against baking projected
-  // coords into IfcSite.ObjectPlacement instead of using IfcMapConversion.
-  // Pick-on-map and the bbox sanity gate both fail in this case because
-  // the local origin is metres-far from the geometry; tell the user *why*
-  // so they can re-author the file rather than fight the UI.
-  const bakedProjectedOrigin = detectBakedProjectedOrigin(metadata);
-  useEffect(
-    function warnIfProjectedOriginBakedIntoSite() {
-      if (!bakedProjectedOrigin) {
-        return;
-      }
-      const { x, y, z } = bakedProjectedOrigin;
-      emitLog({
-        level: "warn",
-        message:
-          `IfcSite.ObjectPlacement at (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(1)}) ` +
-          `looks like baked-in projected coordinates. Per buildingSMART's ` +
-          `"User Guide for Geo-referencing in IFC" §3.3, the offset belongs ` +
-          `in IfcMapConversion (IFC4) or ePSet_MapConversion (IFC2X3), not ` +
-          `in IfcSite.ObjectPlacement.`,
-      });
-    },
-    [bakedProjectedOrigin],
-  );
-
-  // Two failure modes: IfcSite reference outside the CRS area of use, or
-  // a placeholder IfcMapConversion that lands geometry at the projected
-  // CRS's false origin. Skipped when we already warned about baked-in
-  // coords above (that's the underlying cause and the message would be
-  // misleading).
-  useEffect(
-    function warnIfHelmertOutsideAreaOfUse() {
-      if (bakedProjectedOrigin) {
-        return;
-      }
-      const isOutsideOfCrs =
-        activeCrs &&
-        rawEffectiveParameters !== null &&
-        effectiveHelmertParameters === null;
-
-      if (isOutsideOfCrs) {
-        const source = metadata.existingGeoref
-          ? "Existing IfcMapConversion"
-          : "Anchor parameters";
-        emitLog({
-          level: "warn",
-          message:
-            `${source} places geometry outside the area of ` +
-            `use for EPSG:${activeCrs.code}` +
-            (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "") +
-            ` — likely a placeholder transform. Use the Survey points tab ` +
-            `to anchor manually, or switch CRS.`,
-        });
-      } else if (
-        activeCrs &&
-        metadata.siteReference &&
-        !metadata.existingGeoref &&
-        effectiveHelmertParameters === null
-      ) {
-        // Fell through to siteReference seed but it was rejected.
-        const { latitude, longitude } = metadata.siteReference;
-        emitLog({
-          level: "warn",
-          message:
-            `IfcSite reference (${longitude.toFixed(4)}°E, ${latitude.toFixed(4)}°N) ` +
-            `is outside the area of use for EPSG:${activeCrs.code}` +
-            (activeCrs.areaOfUse ? ` (${activeCrs.areaOfUse})` : "") +
-            ". Pick a different CRS, or use the Survey points tab to enter " +
-            "a known point manually.",
-        });
-      }
-    },
-    [
-      activeCrs,
-      metadata.siteReference,
-      metadata.existingGeoref,
-      rawEffectiveParameters,
-      effectiveHelmertParameters,
-      bakedProjectedOrigin,
-    ],
-  );
-
   function handleDownloadSidecar() {
-    if (!effectiveHelmertParameters || !activeCrs) {
+    if (!effectiveParameters || !activeCrs) {
       return;
     }
     const sidecar = buildSidecar({
@@ -281,7 +226,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
       localOrigin: metadata.localOrigin,
       activeCrs,
       verticalDatum,
-      parameters: effectiveHelmertParameters,
+      parameters: effectiveParameters,
     });
     const json = JSON.stringify(sidecar, null, 2);
     const blob = new Blob([json], { type: "application/json" });
@@ -321,6 +266,13 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     replaceEpsg(String(sidecar.projectedCrs.epsg));
     setVerticalDatum(sidecar.projectedCrs.verticalDatum);
     dispatchAnchor({ type: "edited", params });
+    // Sidecar apply may change the active CRS (resolves async via
+    // useCrsResolution). Reset the framed-state so `frameOnFirstAppearance`
+    // takes over once `effectiveParameters` lands inside the new CRS's
+    // bbox — calling `frameNow` synchronously here would project through
+    // the *old* CRS when the sidecar EPSG differs.
+    hasFramedRef.current = false;
+    framedWithFootprintRef.current = false;
     emitLog({
       level: originsMatch ? "info" : "warn",
       message:
@@ -338,15 +290,8 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
         saveCard={
           <SaveCard
             busy={busy}
-            canWrite={
-              effectiveHelmertParameters !== null &&
-              activeCrs?.accuracy.kind !== "degraded-override-failed"
-            }
-            blockedReason={
-              activeCrs?.accuracy.kind === "degraded-override-failed"
-                ? `Save blocked: precision grid for EPSG:${activeCrs.code} failed to load. Retry from the CRS card.`
-                : null
-            }
+            canWrite={effectiveParameters !== null && saveBlockedReason === null}
+            blockedReason={saveBlockedReason}
             onWrite={write}
           />
         }
@@ -398,22 +343,13 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
               <Activity mode={isInert ? "hidden" : "visible"}>
                 <div className="rounded-lg border border-slate-200 bg-white px-2 py-4">
                   <AnchorCard
-                    parameters={effectiveHelmertParameters}
-                    provenance={effectiveAnchorProvenance}
+                    parameters={effectiveParameters}
+                    provenance={provenance}
                     isPicking={isPickingAnchor}
                     canResetToFile={Boolean(metadata.existingGeoref)}
-                    pickBlockedReason={
-                      bakedProjectedOrigin
-                        ? "Pick disabled: this file bakes projected coordinates into IfcSite.ObjectPlacement instead of using IfcMapConversion (see diagnostics). Re-author the file with a small local origin to enable picking."
-                        : !activeCrs
-                          ? "Set a target CRS before picking an anchor."
-                          : activeCrs.accuracy.kind ===
-                              "degraded-override-failed"
-                            ? "Pick disabled: precision grid for this CRS isn't loaded — clicking would record a ~170 m–wrong survey point. Retry from the CRS card."
-                            : null
-                    }
+                    pickBlockedReason={pickBlockedReason}
                     canDownloadSidecar={
-                      effectiveHelmertParameters !== null && activeCrs !== null
+                      effectiveParameters !== null && activeCrs !== null
                     }
                     onEdit={(params) => {
                       dispatchAnchor({ type: "edited", params });
@@ -422,6 +358,10 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                     onCancelPick={cancelPickAnchor}
                     onResetToFile={() => {
                       dispatchAnchor({ type: "resetToFile" });
+                      const fileParams = metadata.existingGeoref?.helmert;
+                      if (fileParams) {
+                        frameNow(nextSignalsAfter(fileParams));
+                      }
                     }}
                     onDownloadSidecar={handleDownloadSidecar}
                   />
@@ -440,7 +380,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                     busy={busy}
                     onSolve={solve}
                     lastFitPoints={lastFitPoints}
-                    currentParams={effectiveHelmertParameters}
+                    currentParams={effectiveParameters}
                   />
                 </div>
               </Activity>
@@ -449,8 +389,8 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
         </Tabs>
 
         <RotationCard
-          parameters={effectiveHelmertParameters}
-          provenance={effectiveAnchorProvenance}
+          parameters={effectiveParameters}
+          provenance={provenance}
           onParametersChange={(params: HelmertParams) => {
             dispatchAnchor({ type: "edited", params });
           }}
@@ -460,14 +400,14 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
 
       <section className="min-w-0 flex-1">
         <MapView
-          parameters={effectiveHelmertParameters}
+          ref={mapViewRef}
+          parameters={effectiveParameters}
           activeCrs={activeCrs}
-          references={references}
+          overlaySignals={overlaySignals}
           isPickingAnchor={isPickingAnchor}
           onAnchorPicked={handleAnchorPicked}
           onCancelPickAnchor={cancelPickAnchor}
           residualsPoints={lastFitPoints}
-          anchorProvenance={effectiveAnchorProvenance}
         />
       </section>
     </div>

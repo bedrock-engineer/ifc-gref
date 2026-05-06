@@ -18,7 +18,7 @@
  * are swallowed — persistence is best-effort, not load-bearing.
  */
 
-import { useEffect, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import type { ZodType } from "zod";
 
 interface UseStickyStateOptions<T> {
@@ -36,7 +36,7 @@ export function useStickyState<T>(
   key: string,
   defaultValue: T | (() => T),
   options: UseStickyStateOptions<T> = {},
-) {
+): [T, Dispatch<SetStateAction<T>>] {
   const { schema } = options;
 
   const [value, setValue] = useState<T>(() =>
@@ -82,7 +82,7 @@ export function useStickyState<T>(
     [key, schema],
   );
 
-  return [value, setValue];
+  return [value, setValue] as const;
 }
 
 function readSticky<T>(

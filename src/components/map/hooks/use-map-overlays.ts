@@ -9,19 +9,12 @@ import {
 } from "../style";
 import { runWhenMapReady } from "./run-when-map-ready";
 
+import type { MapOverlaySignals } from "#state/georef-status/types";
+
 // High-contrast black for the marker glyph + label. Accent teal disappears
 // on busy basemaps (satellite especially); the label's white text-shadow
 // gives it just enough lift to read.
 const MARKER_FG = "#111";
-
-export interface MapOverlaySignals {
-  /** Footprint convex hull as a closed ring of WGS84 lng/lat. */
-  footprint: Array<[number, number]> | null;
-  /** Live IfcMapConversion-derived anchor — moves with edited Helmert params. */
-  mapConversion: LngLat | null;
-  /** IfcSite RefLat/RefLon (already filtered for outside-bbox cases). */
-  siteReference: LngLat | null;
-}
 
 /**
  * 2D overlays driven by the model's live georef state:
@@ -29,8 +22,10 @@ export interface MapOverlaySignals {
  * - one marker per available reference source (IfcMapConversion, IfcSite),
  *   each with its own glyph and a persistent small-font label
  *
- * Camera framing is owned by the parent (see `MapView.autoFrameOnDiscreteChange`)
- * — driven by anchor provenance, not by the data on this hook's signal.
+ * Camera framing is owned by Workspace via the imperative `frameToContent`
+ * API on MapView — driven by event handlers (solve, pick, reset, reproject,
+ * sidecar) plus two data-arrival effects (first-appearance, footprint
+ * promotion).
  */
 export function useMapOverlays(
   mapRef: RefObject<MlMap | null>,

@@ -2,7 +2,6 @@
                   @typescript-eslint/no-unsafe-assignment,
                   @typescript-eslint/no-unsafe-member-access,
                   @typescript-eslint/no-unsafe-call,
-                  @typescript-eslint/no-base-to-string,
 */
 
 import {
@@ -84,14 +83,14 @@ export function readGeorefIfc2x3(
   // ePset_ProjectedCRS has no Name property in some files; fall back to the
   // ePset_MapConversion's TargetCRS so we still surface a hint.
   if (rawProjectedCrs && rawProjectedCrs.name == null) {
-    rawProjectedCrs.name = optionalPropString(mcProperties.TargetCRS);
+    rawProjectedCrs.name = optionalPropertyString(mcProperties.TargetCRS);
   }
-  const onDiskScale = optionalPropNumber(mcProperties.Scale, 1);
-  const onDiskXAbs = optionalPropNumber(mcProperties.XAxisAbscissa, 1);
-  const onDiskXOrd = optionalPropNumber(mcProperties.XAxisOrdinate, 0);
-  const onDiskE = optionalPropNumber(mcProperties.Eastings, 0);
-  const onDiskN = optionalPropNumber(mcProperties.Northings, 0);
-  const onDiskH = optionalPropNumber(mcProperties.OrthogonalHeight, 0);
+  const onDiskScale = optionalPropertyNumber(mcProperties.Scale, 1);
+  const onDiskXAbs = optionalPropertyNumber(mcProperties.XAxisAbscissa, 1);
+  const onDiskXOrd = optionalPropertyNumber(mcProperties.XAxisOrdinate, 0);
+  const onDiskE = optionalPropertyNumber(mcProperties.Eastings, 0);
+  const onDiskN = optionalPropertyNumber(mcProperties.Northings, 0);
+  const onDiskH = optionalPropertyNumber(mcProperties.OrthogonalHeight, 0);
   // ePset_MapConversion has no MapUnit concept; values are conventionally
   // in the IFC project's length unit. Pass `ifcMetresPerUnit` for both
   // factors so the scale ratio is 1 (on-disk Scale == internal scale).
@@ -116,7 +115,7 @@ export function readGeorefIfc2x3(
   const projectedCrs =
     rawProjectedCrs
     ?? {
-      name: optionalPropString(mcProperties.TargetCRS),
+      name: optionalPropertyString(mcProperties.TargetCRS),
       description: null,
       geodeticDatum: null,
       verticalDatum: null,
@@ -149,24 +148,24 @@ function readRawProjectedCrsIfc2x3(
   // ePset_ProjectedCRS mirrors the IFC4 IfcProjectedCRS attributes as
   // free-form properties; readers in the wild may write any subset.
   return {
-    name: optionalPropString(crsProperties.Name),
-    description: optionalPropString(crsProperties.Description),
-    geodeticDatum: optionalPropString(crsProperties.GeodeticDatum),
-    verticalDatum: optionalPropString(crsProperties.VerticalDatum),
-    mapProjection: optionalPropString(crsProperties.MapProjection),
-    mapZone: optionalPropString(crsProperties.MapZone),
-    mapUnit: optionalPropString(crsProperties.MapUnit),
+    name: optionalPropertyString(crsProperties.Name),
+    description: optionalPropertyString(crsProperties.Description),
+    geodeticDatum: optionalPropertyString(crsProperties.GeodeticDatum),
+    verticalDatum: optionalPropertyString(crsProperties.VerticalDatum),
+    mapProjection: optionalPropertyString(crsProperties.MapProjection),
+    mapZone: optionalPropertyString(crsProperties.MapZone),
+    mapUnit: optionalPropertyString(crsProperties.MapUnit),
   };
 }
 
-function optionalPropString(v: unknown): string | null {
+function optionalPropertyString(v: unknown): string | null {
   if (typeof v !== "string" || v.length === 0) {
     return null;
   }
   return v;
 }
 
-function optionalPropNumber(v: unknown, fallback: number): number {
+function optionalPropertyNumber(v: unknown, fallback: number): number {
   if (v == null) {
     return fallback;
   }

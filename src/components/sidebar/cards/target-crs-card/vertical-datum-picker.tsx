@@ -16,7 +16,7 @@ import {
   filterVerticalDatumOptions,
   type VerticalDatumOption,
 } from "#modules/crs";
-import { useManifestSnapshot } from "./use-crs-manifest";
+import { useManifestSnapshot } from "#lib/use-crs-manifest";
 
 interface VerticalDatumPickerProps {
   /** Seed for the input on mount. Subsequent prop changes are ignored —

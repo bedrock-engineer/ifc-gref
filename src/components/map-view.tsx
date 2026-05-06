@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import { useStickyState } from "../hooks/use-sticky-state";
 import { createPortal } from "react-dom";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { getIfc } from "../ifc-api";
-import { projectLocalToWgs84, type CrsDef } from "#modules/crs";
-import { emitLog } from "../lib/log";
-import type { MapReferences } from "./map/derive-references";
+import { type CrsDef } from "#modules/crs";
+import type { MapOverlaySignals } from "#state/georef-status/types";
 import type { HelmertParams, PointPair } from "#modules/helmert/solve";
-import type { Provenance } from "#state/workspace";
 import { LayersPanel } from "./map/controls/layers-panel";
 import { SearchBox } from "./map/controls/search-box";
 import { ViewToggle, type ViewMode } from "./map/controls/view-toggle";
@@ -49,59 +52,20 @@ function deriveThreeDDisabled(
   return null;
 }
 
-export interface MapViewProps {
-  /** Helmert params — used to anchor the 3D model on the globe. */
-  parameters: HelmertParams | null;
-  /**
-   * Resolved target CRS. Null while Workspace is still fetching the CRS
-   * definition — children skip transforms until it's ready. Because this
-   * is a CrsDef (not a raw code string), holding it implies proj4js has
-   * the definition registered.
-   */
-  activeCrs: CrsDef | null;
-  /**
-   * Derived WGS84 anchors for the IfcMapConversion and IfcSite sources.
-   * Computed in the parent so the sidebar can read `siteOutsideBbox` from
-   * the same struct without re-running the derivation.
-   */
-  references: MapReferences;
-  /** True while the sidebar is awaiting a map click to set the anchor. */
-  isPickingAnchor: boolean;
-  /** Fires once per click while `isPickingAnchor` is true. */
-  onAnchorPicked: (point: PickedAnchor) => void;
-  /** Fires when the user presses Escape while picking. */
-  onCancelPickAnchor: () => void;
-  /** Point pairs from the most recent least-squares fit; drives the
-   *  fitted-dot overlay. Null when no fit has run. */
-  residualsPoints: Array<PointPair> | null;
-  /** Where the current anchor came from. Drives the auto-reframe rule: any
-   *  non-`manual` provenance with new params is a discrete user action and
-   *  should reframe the camera; `manual` is a live edit and shouldn't. */
-  anchorProvenance: Provenance;
+/**
+ * Imperative API exposed via `ref`. Workspace calls these from event
+ * handlers (solve, pick, reset, reproject, sidecar apply) — keeping
+ * camera framing event-shaped instead of an effect that watches state
+ * and recovers "did the user just do something" via provenance bails.
+ *
+ * `frameToContent` is a no-op when 3D is the active view; 3D's own
+ * `applyAnchor.flyTo` already follows the anchor on every params change.
+ */
+export interface MapViewHandle {
+  frameToContent: (signals: MapOverlaySignals) => void;
 }
 
-/**
- * Thin composition of map hooks: `useMapInit` owns the map instance + the
- * 2D/3D and Layers controls; the other hooks react to prop / UI-state
- * changes. All map-specific state (reference marker, footprint hull,
- * basemap / overlays) lives here so that parent re-renders triggered by
- * Helmert param edits don't require re-threading map data through props.
- */
-export function MapView({
-  parameters,
-  activeCrs,
-  references,
-  isPickingAnchor,
-  onAnchorPicked,
-  onCancelPickAnchor,
-  residualsPoints,
-  anchorProvenance,
-}: MapViewProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [view, setView] = useState<ViewMode>("2d");
-  const [basemap, setBasemap] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
-  const [overlays, setOverlays] =
-    useState<Record<OverlayId, boolean>>(INITIAL_OVERLAYS);
+function useCustomBasemaps() {
   const [customBasemaps, setCustomBasemaps] = useStickyState<
     Array<CustomBasemap>
   >(CUSTOM_BASEMAPS_STORAGE_KEY, [], { schema: CustomBasemapsSchema });
@@ -116,59 +80,69 @@ export function MapView({
     setBasemap((current) => (current === id ? DEFAULT_BASEMAP_ID : current));
   }
 
-  const [footprintLocal, setFootprintLocal] = useState<Array<{
-    x: number;
-    y: number;
-  }> | null>(null);
+  return { customBasemaps, handleAddCustomBasemap, handleRemoveCustomBasemap };
+}
 
-  useEffect(function extractFootprint() {
-    const token = { cancelled: false };
-    void getIfc()
-      .extractFootprint()
-      .catch((error: unknown) => {
-        emitLog({
-          level: "error",
-          message: `Footprint extraction failed: ${error instanceof Error ? error.message : String(error)}`,
-        });
-        return null;
-      })
-      .then((hull) => {
-        if (!token.cancelled) {
-          setFootprintLocal(hull);
-        }
-      });
-    return () => {
-      token.cancelled = true;
-    };
-  }, []);
+export interface MapViewProps {
+  /** Helmert params — used to anchor the 3D model on the globe. */
+  parameters: HelmertParams | null;
+  /**
+   * Resolved target CRS. Null while Workspace is still fetching the CRS
+   * definition — children skip transforms until it's ready. Because this
+   * is a CrsDef (not a raw code string), holding it implies proj4js has
+   * the definition registered.
+   */
+  activeCrs: CrsDef | null;
+  /**
+   * 2D map overlay signals — markers, footprint hull, and the camera
+   * framing target. Derived in Workspace so the imperative
+   * `frameToContent` API can also be called with synchronously-computed
+   * "next" signals from new params (without waiting for React to
+   * commit the dispatch that would re-derive them).
+   */
+  overlaySignals: MapOverlaySignals;
+  /** True while the sidebar is awaiting a map click to set the anchor. */
+  isPickingAnchor: boolean;
+  /** Fires once per click while `isPickingAnchor` is true. */
+  onAnchorPicked: (point: PickedAnchor) => void;
+  /** Fires when the user presses Escape while picking. */
+  onCancelPickAnchor: () => void;
+  /** Point pairs from the most recent least-squares fit; drives the
+   *  fitted-dot overlay. Null when no fit has run. */
+  residualsPoints: Array<PointPair> | null;
+  /** Imperative handle for parent-driven framing. */
+  ref?: Ref<MapViewHandle>;
+}
 
-  // Project the local-coordinate footprint into WGS84 lng/lat for the map.
-  // The forward Helmert + proj4 transform is cheap (≤ a few hundred hull
-  // vertices), so we don't memoise the inner work — useMemo just keeps the
-  // array identity stable across unrelated re-renders so the footprint
-  // layer effect doesn't refire.
-  const footprintLngLat = useMemo<Array<[number, number]> | null>(() => {
-    if (!footprintLocal || !parameters || !activeCrs) {
-      return null;
-    }
-    const projected: Array<[number, number]> = [];
-    for (const p of footprintLocal) {
-      const ll = projectLocalToWgs84(
-        { x: p.x, y: p.y, z: 0 },
-        parameters,
-        activeCrs,
-      );
-      if (ll.isErr()) {
-        continue;
-      }
-      projected.push([ll.value.longitude, ll.value.latitude]);
-    }
-    return projected.length >= 3 ? projected : null;
-  }, [footprintLocal, parameters, activeCrs]);
+/**
+ * Thin composition of map hooks: `useMapInit` owns the map instance + the
+ * 2D/3D and Layers controls; the other hooks react to prop / UI-state
+ * changes. All map-specific state (reference marker, footprint hull,
+ * basemap / overlays) lives here so that parent re-renders triggered by
+ * Helmert param edits don't require re-threading map data through props.
+ */
+export function MapView({
+  parameters,
+  activeCrs,
+  overlaySignals,
+  isPickingAnchor,
+  onAnchorPicked,
+  onCancelPickAnchor,
+  residualsPoints,
+  ref,
+}: MapViewProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [view, setView] = useState<ViewMode>("2d");
+  const [basemap, setBasemap] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
+  const [overlays, setOverlays] =
+    useState<Record<OverlayId, boolean>>(INITIAL_OVERLAYS);
 
   const { mapRef, portals } = useMapInit(containerRef);
 
   const scope = useMapScope(mapRef);
+
+  const { customBasemaps, handleAddCustomBasemap, handleRemoveCustomBasemap } =
+    useCustomBasemaps();
 
   // Gate the 3D toggle: without solved Helmert params + a resolved CRS the
   // 3D layer would render a blank view, so surface the reason in the button
@@ -182,65 +156,34 @@ export function MapView({
   // siteReference (null when outside the active CRS bbox) so an out-of-bbox
   // IfcSite doesn't suppress the CRS-area auto-zoom — there'd be nothing on
   // the map to look at otherwise.
-  const hasAnchor = parameters != null || references.siteReference != null;
+  const hasAnchor = parameters != null || overlaySignals.siteReference != null;
   const axesGeometry = useMemo(
     () => computeAxesGeometry(parameters, activeCrs),
     [parameters, activeCrs],
   );
-  const overlaySignals = useMemo(
-    () => ({
-      footprint: footprintLngLat,
-      mapConversion: references.mapConversion,
-      siteReference: references.siteReference,
-    }),
-    [footprintLngLat, references],
-  );
   useCrsAutoZoom(mapRef, activeCrs, hasAnchor);
   useMapOverlays(mapRef, overlaySignals);
 
-  // Auto-reframe on discrete anchor changes. The trigger is `parameters`
-  // identity (the reducer hands out a fresh reference on every dispatch),
-  // gated by provenance: `manual` is a live slider edit and stays put;
-  // every other provenance (file/map/survey/default) is a discrete event
-  // worth reframing for, including repeated solves at the same source-rank.
-  // Also reframes when the footprint becomes available *after* parameters
-  // have already been framed — on file load, parameters arrive synchronously
-  // from metadata but `extractFootprint()` lands later, so the first frame
-  // uses the single-point mapConversion/siteReference fallback; we promote
-  // to the footprint as soon as it's ready.
-  // 3D handles its own flyTo in apply-anchor.ts, so this 2D path is gated
-  // off when 3D is active.
-  const lastFrameRef = useRef<{
-    parameters: HelmertParams | null;
-    hadFootprint: boolean;
-  } | null>(null);
-  useEffect(function autoFrameOnDiscreteChange() {
-    const hasFootprint = overlaySignals.footprint !== null;
-    const last = lastFrameRef.current;
-    // Bail when neither parameters identity nor footprint availability
-    // moved in a direction that warrants a reframe. We deliberately *don't*
-    // reframe when the footprint disappears — the marker fallback is still
-    // useful and silent retreat would feel like a glitch.
-    if (
-      last !== null
-      && last.parameters === parameters
-      && (last.hadFootprint || !hasFootprint)
-    ) {
-      return;
-    }
-    lastFrameRef.current = { parameters, hadFootprint: hasFootprint };
-    if (parameters === null || anchorProvenance === "manual") {
-      return;
-    }
-    if (effectiveView !== "2d") {
-      return;
-    }
-    const map = mapRef.current;
-    if (!map) {
-      return;
-    }
-    frameCamera(map, overlaySignals, { duration: 600 });
-  }, [parameters, anchorProvenance, effectiveView, overlaySignals, mapRef]);
+  // Imperative camera framing — driven by Workspace event handlers
+  // (solve, pick, reset, reproject, sidecar apply) plus its own
+  // first-appearance and footprint-promotion effects. 3D bails because
+  // `applyAnchor.flyTo` already moves the camera on every params change.
+  useImperativeHandle(
+    ref,
+    () => ({
+      frameToContent(signals) {
+        if (effectiveView !== "2d") {
+          return;
+        }
+        const map = mapRef.current;
+        if (!map) {
+          return;
+        }
+        frameCamera(map, signals, { duration: 600 });
+      },
+    }),
+    [effectiveView, mapRef],
+  );
 
   useAxesLayer(mapRef, axesGeometry);
   useResidualsLayer(mapRef, residualsPoints, parameters, activeCrs);
@@ -261,10 +204,21 @@ export function MapView({
             <ViewToggle
               view={effectiveView}
               disabledReason={threeDDisabledReason}
-              onChange={setView}
+              onChange={(next) => {
+                setView(next);
+                // 3D's `applyAnchor.flyTo` may have moved the camera while
+                // 2D was hidden; reframe to current overlays on return.
+                if (next === "2d") {
+                  const map = mapRef.current;
+                  if (map) {
+                    frameCamera(map, overlaySignals, { duration: 600 });
+                  }
+                }
+              }}
             />,
             portals.viewToggle,
           )}
+
           {createPortal(
             <LayersPanel
               basemap={basemap}
@@ -278,7 +232,9 @@ export function MapView({
             />,
             portals.layers,
           )}
+
           {createPortal(<SearchBox mapRef={mapRef} />, portals.search)}
+
           {createPortal(
             <ZoomToModel
               isDisabled={

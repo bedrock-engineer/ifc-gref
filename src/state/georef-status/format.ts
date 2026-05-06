@@ -1,0 +1,104 @@
+import type { CrsDef } from "#modules/crs";
+import type { Finding, GeorefView } from "./types";
+
+/**
+ * Prose for the IFC log panel. One entry per finding kind.
+ *
+ * The CRS-scoped messages mention `EPSG:X` so users browsing the log can
+ * see *which* CRS was the problem — important when they've toggled
+ * through several.
+ */
+export function findingToLogMessage(finding: Finding): string {
+  switch (finding.kind) {
+    case "unknown-length-unit": {
+      return (
+        `Unknown IFC length unit '${finding.unit}' — treated as metres at ` +
+        `the worker boundary; numeric values may be off by the unit factor`
+      );
+    }
+    case "baked-projected-origin": {
+      const { x, y, z } = finding.origin;
+      return (
+        `IfcSite.ObjectPlacement at (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(1)}) ` +
+        `looks like baked-in projected coordinates. Per buildingSMART's ` +
+        `"User Guide for Geo-referencing in IFC" §3.3, the offset belongs ` +
+        `in IfcMapConversion (IFC4) or ePSet_MapConversion (IFC2X3), not ` +
+        `in IfcSite.ObjectPlacement.`
+      );
+    }
+    case "site-outside-crs": {
+      const where = `EPSG:${finding.crsCode}` + (finding.areaOfUse ? ` (${finding.areaOfUse})` : "");
+      const tail = finding.hasExistingGeoref
+        ? "— not shown on map."
+        : "— pick a different CRS, or use the Survey points tab to enter a known point manually.";
+      return (
+        `IfcSite RefLat/RefLon (${finding.site.latitude.toFixed(6)}, ${finding.site.longitude.toFixed(6)}) ` +
+        `is outside ${where} area of use ${tail}`
+      );
+    }
+    case "helmert-outside-crs": {
+      const where = `EPSG:${finding.crsCode}` + (finding.areaOfUse ? ` (${finding.areaOfUse})` : "");
+      const source =
+        finding.source === "existing-georef"
+          ? "Existing IfcMapConversion"
+          : "Anchor parameters";
+      return (
+        `${source} places geometry outside the area of use for ${where} — ` +
+        `likely a placeholder transform. Use the Survey points tab to ` +
+        `anchor manually, or switch CRS.`
+      );
+    }
+    case "grid-degraded": {
+      return (
+        `Precision grid for EPSG:${finding.crsCode} failed to load — ` +
+        `coordinates may be off by ~170 m. Retry from the CRS card.`
+      );
+    }
+  }
+}
+
+/**
+ * Reason the AnchorCard pick button is blocked, if any. Cascades through
+ * the same priority the inline cascade in workspace.tsx used to: a baked
+ * origin is the most actionable problem, then "no CRS yet", then the
+ * grid-degraded finding (if present in the view).
+ */
+export function derivePickBlockedReason(
+  view: GeorefView,
+  activeCrs: CrsDef | null,
+): string | null {
+  if (view.bakedProjectedOrigin) {
+    return (
+      "Pick disabled: this file bakes projected coordinates into " +
+      "IfcSite.ObjectPlacement instead of using IfcMapConversion (see " +
+      "diagnostics). Re-author the file with a small local origin to " +
+      "enable picking."
+    );
+  }
+  if (!activeCrs) {
+    return "Set a target CRS before picking an anchor.";
+  }
+  if (view.findings.some((f) => f.kind === "grid-degraded")) {
+    return (
+      "Pick disabled: precision grid for this CRS isn't loaded — clicking " +
+      "would record a ~170 m–wrong survey point. Retry from the CRS card."
+    );
+  }
+  return null;
+}
+
+/**
+ * Reason the Save button is blocked, if any. Today only the
+ * grid-degraded finding blocks save — keep the function small and let
+ * future block-reasons accumulate here as branches.
+ */
+export function deriveSaveBlockedReason(view: GeorefView): string | null {
+  const degraded = view.findings.find((f) => f.kind === "grid-degraded");
+  if (degraded) {
+    return (
+      `Save blocked: precision grid for EPSG:${degraded.crsCode} failed to ` +
+      `load. Retry from the CRS card.`
+    );
+  }
+  return null;
+}

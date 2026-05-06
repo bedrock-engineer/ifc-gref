@@ -5,10 +5,7 @@ import { deriveCrsViewTarget, type CrsDef } from "#modules/crs";
 /**
  * Aim the camera at the CRS's area of use when the loaded file has only a
  * target-CRS hint — no solved parameters, no IfcSite reference, no prior
- * georef. Covers the Revit-placeholder case (Snowdon Towers): the file names
- * EPSG:2272 (PA State Plane) but its IfcMapConversion is all zeros, so
- * nothing else in the app has any reason to move the map off the default NL
- * view. Without this nudge the user stares at the Netherlands while typing
+ * georef. Without this nudge the user stares at the Netherlands while typing
  * survey points for a Pennsylvania building.
  *
  * Once the user has an anchor (picked, solved, or from file) the

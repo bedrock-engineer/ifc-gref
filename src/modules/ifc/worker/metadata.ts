@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any,
                   @typescript-eslint/no-unsafe-assignment,
                   @typescript-eslint/no-unsafe-member-access,
-                  @typescript-eslint/no-unsafe-return,
 */
 
 import {
@@ -79,6 +78,16 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
   const lengthUnit = readLengthUnit(ifcAPI, modelID, project);
   const lengthUnitMetres = unitToMetres(lengthUnit);
   const ifcMetresPerUnit = lengthUnitMetres.isOk() ? lengthUnitMetres.value : 1;
+  if (lengthUnitMetres.isErr()) {
+    emitLog({
+      level: "warn",
+      source: "worker",
+      message:
+        `Unknown IFC length unit '${lengthUnitMetres.error.name}' — ` +
+        `treated as metres at the worker boundary; numeric values may be ` +
+        `off by the unit factor`,
+    });
+  }
 
   const georef = readExistingGeoref(ifcAPI, modelID, schema, ifcMetresPerUnit);
   const metadata: IfcMetadata = {

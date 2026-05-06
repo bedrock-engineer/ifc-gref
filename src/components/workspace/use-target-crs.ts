@@ -7,7 +7,7 @@ import {
   reprojectAnchorOnCrsChange,
 } from "#state/workspace";
 import type { IfcMetadata } from "#modules/ifc/worker";
-import { useCrsResolution } from "../sidebar/cards/target-crs-card/use-crs-resolution";
+import { useCrsResolution } from "#lib/use-crs-resolution";
 
 interface UseTargetCrsOptions {
   metadata: IfcMetadata;

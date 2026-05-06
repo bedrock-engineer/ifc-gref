@@ -403,12 +403,12 @@ function solveLeastSquaresJoint(
     const index = Math.floor(x / 3);
     const k = x % 3;
     const point = points[index];
-    if (!point) return Number.NaN;
+    if (!point) {return Number.NaN;}
     const { local } = point;
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);
-    if (k === 0) return S * (cos * local.x - sin * local.y) + E;
-    if (k === 1) return S * (sin * local.x + cos * local.y) + N;
+    if (k === 0) {return S * (cos * local.x - sin * local.y) + E;}
+    if (k === 1) {return S * (sin * local.x + cos * local.y) + N;}
     return S * local.z + H;
   };
 
@@ -476,11 +476,11 @@ function solveLeastSquaresSplit(
     const index = Math.floor(x / 2);
     const k = x % 2;
     const point = points[index];
-    if (!point) return Number.NaN;
+    if (!point) {return Number.NaN;}
     const { local } = point;
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);
-    if (k === 0) return S * (cos * local.x - sin * local.y) + E;
+    if (k === 0) {return S * (cos * local.x - sin * local.y) + E;}
     return S * (sin * local.x + cos * local.y) + N;
   };
 

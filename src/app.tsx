@@ -7,6 +7,8 @@ import { getIfc } from "./ifc-api";
 import { formatBytes } from "./lib/format";
 import { emitLog } from "./lib/log";
 import type { IfcMetadata } from "#modules/ifc/worker";
+import { computeFileFindings } from "#state/georef-status/findings";
+import { findingToLogMessage } from "#state/georef-status/format";
 
 export type Stage =
   | { kind: "idle" }
@@ -69,6 +71,13 @@ export default function App() {
         });
       } else {
         emitLog({ message: "No existing georeferencing found" });
+      }
+
+      for (const finding of computeFileFindings(metadata)) {
+        if (finding.kind === "unknown-length-unit") {
+          continue;
+        }
+        emitLog({ level: "warn", message: findingToLogMessage(finding) });
       }
 
       setStage({ kind: "loaded", filename: file.name, metadata });

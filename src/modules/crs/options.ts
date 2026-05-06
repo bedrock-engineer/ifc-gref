@@ -19,7 +19,7 @@ export function filterCrsOptions(
 ): { items: Array<CrsOption>; truncated: boolean } {
   const trimmed = input.trim();
   if (trimmed.length === 0) {
-    return { items: featured.slice(), truncated: false };
+    return { items: [...featured], truncated: false };
   }
 
   const matches = makeCrsMatcher(trimmed);

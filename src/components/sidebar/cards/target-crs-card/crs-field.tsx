@@ -10,8 +10,8 @@ import {
   Popover,
 } from "react-aria-components";
 import { filterCrsOptions, type CrsOption } from "#modules/crs";
+import { useCrsManifest } from "#lib/use-crs-manifest";
 import { useCrsCommit } from "./use-crs-commit";
-import { useCrsManifest } from "./use-crs-manifest";
 
 /**
  * Visual grouping is achieved with `isDisabled` "header rows" inside a flat
