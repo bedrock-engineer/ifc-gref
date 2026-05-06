@@ -1,47 +1,25 @@
-import { useState } from "react";
 import type { HelmertParams } from "#modules/helmert/solve";
 import type { IfcMetadata } from "#modules/ifc/worker";
 import { Card } from "../card";
 import { NumberField } from "../number-field";
 import { ProvenanceBadge, type Provenance } from "../provenance-badge";
 
-function computeProvenance(
-  edited: boolean,
-  fromFile: boolean,
-  derived: boolean,
-): Provenance {
-  if (edited) {
-    return "manual";
-  }
-  if (fromFile) {
-    return "file";
-  }
-  if (derived) {
-    return "derived";
-  }
-  return "default";
-}
-
 interface RotationCardProps {
   parameters: HelmertParams | null;
+  provenance: Provenance;
   onParametersChange: (next: HelmertParams) => void;
   metadata: IfcMetadata;
 }
 
 export function RotationCard({
   parameters,
+  provenance,
   onParametersChange,
   metadata,
 }: RotationCardProps) {
-  const [edited, setEdited] = useState(false);
   const hasParams = parameters !== null;
   const fromFile = Boolean(metadata.existingGeoref);
   const hasTrueNorth = Boolean(metadata.trueNorth);
-  const provenance = computeProvenance(
-    edited,
-    fromFile,
-    hasTrueNorth && hasParams,
-  );
 
   const angleDegrees = parameters
     ? (parameters.rotation * 180) / Math.PI
@@ -53,7 +31,6 @@ export function RotationCard({
     if (!parameters) {
       return;
     }
-    setEdited(true);
     onParametersChange({
       ...parameters,
       rotation: (value * Math.PI) / 180,
@@ -79,7 +56,6 @@ export function RotationCard({
     if (!parameters) {
       return;
     }
-    setEdited(true);
     onParametersChange({
       ...parameters,
       xScale: value,
@@ -92,7 +68,6 @@ export function RotationCard({
     if (!parameters) {
       return;
     }
-    setEdited(true);
     onParametersChange({
       ...parameters,
       xScale: value,
@@ -104,7 +79,6 @@ export function RotationCard({
     if (!parameters) {
       return;
     }
-    setEdited(true);
     onParametersChange({
       ...parameters,
       zScale: value,

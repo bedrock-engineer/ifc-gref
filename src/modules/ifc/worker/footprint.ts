@@ -1,21 +1,31 @@
-/* eslint-disable @typescript-eslint/no-explicit-any,
-                  @typescript-eslint/no-unsafe-assignment,
-                  @typescript-eslint/no-unsafe-member-access,
-                  @typescript-eslint/no-unsafe-return,
-                  @typescript-eslint/no-unsafe-call,
-                  @typescript-eslint/no-base-to-string
+/* eslint-disable @typescript-eslint/no-unsafe-assignment,
+                  @typescript-eslint/no-unsafe-member-access
 */
 
 import { polygonHull } from "d3-polygon";
-import { type IfcAPI, IFCBUILDINGELEMENTPROXY, IFCSPACE } from "web-ifc";
+import {
+  type IfcAPI,
+  IFCBUILDINGELEMENTPROXY,
+  IFCBUILDINGSTOREY,
+  IFCSPACE,
+} from "web-ifc";
+import { emitLog } from "#lib/log";
 import { getApi } from "./api";
+import { deriveIfcMetresPerUnit } from "./metadata";
+import {
+  streamPlacedGeometries,
+  transformPositionToIfcFrame,
+} from "./placed-geometries";
+import { rawValue } from "./shared";
+
+interface Storey {
+  elevationM: number;
+  name: string;
+}
 
 /**
- * Express IDs of IfcBuildingElementProxy instances whose ObjectType marks
- * them as reference points (e.g. MiniBIM's "Referentie-object" — the
- * Lokaal-coordinatiepunt and CRS-coordinatiepunt markers). Their tiny
- * geometries sit at the survey / CRS origin and would otherwise drag the
- * convex hull far beyond the actual building envelope.
+ * MiniBIM-style "Referentie-object" proxies are tiny markers at the survey /
+ * CRS origin and would drag the convex hull far beyond the actual building.
  */
 function findReferencePointIds(
   ifcAPI: IfcAPI,
@@ -34,99 +44,108 @@ function findReferencePointIds(
 }
 
 /**
- * Extract a 2D convex-hull footprint of all model geometry, in the local
- * IFC coordinate system. Streams every product mesh, transforms its vertices
- * by `flatTransformation` to model space, and accumulates only XY into a
- * single hull computation.
+ * Ground floor = storey with the smallest non-negative elevation. Returns
+ * null for infrastructure schemas (IfcBridge, IfcRoad, …) which have no
+ * IfcBuildingStorey, and for storey-less buildings.
+ */
+function findGroundStorey(
+  ifcAPI: IfcAPI,
+  modelID: number,
+  ifcMetresPerUnit: number,
+): Storey | null {
+  const ids = ifcAPI.GetLineIDsWithType(modelID, IFCBUILDINGSTOREY);
+  let best: Storey | null = null;
+  for (let index = 0; index < ids.size(); index++) {
+    const storey = ifcAPI.GetLine(modelID, ids.get(index), false);
+    const elevation = Number(rawValue(storey?.Elevation));
+    if (!Number.isFinite(elevation) || elevation < 0) {
+      continue;
+    }
+    const elevationM = elevation * ifcMetresPerUnit;
+    if (best === null || elevationM < best.elevationM) {
+      best = { elevationM, name: String(rawValue(storey?.Name) ?? "") };
+    }
+  }
+  return best;
+}
+
+/**
+ * 2D convex hull of the building's ground-floor outline, in local IFC
+ * coordinates. Filters meshes by Z-range overlap with a 1m-tall band sitting
+ * 10cm above the ground storey — excludes basement, roof, and balconies on
+ * other floors. The filter is whole-mesh, not per-vertex: vertical walls only
+ * have corner vertices, so a strict per-vertex test would drop walls entirely.
  *
- * IfcSpace meshes are skipped — they are virtual room volumes and would
- * inflate the hull beyond the physical building envelope. MiniBIM-style
- * reference-point proxies are skipped for the same reason.
- *
- * Returns null when there is no usable geometry (empty model, all-Space, or
- * fewer than 3 unique points).
+ * Falls back to a full-mesh hull when no IfcBuildingStorey exists. IfcSpace
+ * meshes are skipped — they are virtual room volumes that would inflate the
+ * hull. Returns null when fewer than 3 points contribute.
  */
 export async function extractFootprint(
   modelID: number,
 ): Promise<Array<{ x: number; y: number }> | null> {
   const ifcAPI = await getApi();
-
+  const ifcMetresPerUnit = deriveIfcMetresPerUnit(ifcAPI, modelID);
+  const ground = findGroundStorey(ifcAPI, modelID, ifcMetresPerUnit);
   const referencePointIds = findReferencePointIds(ifcAPI, modelID);
 
-  // Accumulator for XY pairs in flat array form (cheaper than object allocs).
-  // We rely on d3-polygon's tolerance for duplicates rather than dedup here —
-  // the hull is O(n log n) and a few million points hash-deduping would cost
-  // more than just sorting them.
-  const xy: Array<Array<number>> = [];
+  // web-ifc auto-converts geometry to metres, so the slice band is in metres
+  // and we compare directly to per-vertex Z without a unit factor.
+  const sliceLo = ground ? ground.elevationM + 0.1 : -Infinity;
+  const sliceHi = ground ? ground.elevationM + 1.1 : Infinity;
 
-  ifcAPI.StreamAllMeshes(modelID, (mesh) => {
-    if (ifcAPI.GetLineType(modelID, mesh.expressID) === IFCSPACE) {
+  const xy: Array<[number, number]> = [];
+  // Scratch buffer reused across vertices — Float64Array preserves precision
+  // (the global xy is plain JS doubles), and the out-parameter pattern keeps
+  // the hot loop allocation-free.
+  const ifcXyz = new Float64Array(3);
+  let included = 0;
+  let skipped = 0;
+
+  await streamPlacedGeometries(modelID, ({ expressID, ifcClass, matrix, vertices }) => {
+    if (ifcClass === IFCSPACE || referencePointIds.has(expressID)) {
       return;
     }
-    if (referencePointIds.has(mesh.expressID)) {
-      return;
-    }
 
-    const placedGeometries = mesh.geometries;
-    const count = placedGeometries.size();
-    for (let g = 0; g < count; g++) {
-      const placed = placedGeometries.get(g);
-      const geometry = ifcAPI.GetGeometry(modelID, placed.geometryExpressID);
-      const verts = ifcAPI.GetVertexArray(
-        geometry.GetVertexData(),
-        geometry.GetVertexDataSize(),
-      );
-      // web-ifc vertex stride: [x, y, z, nx, ny, nz] interleaved.
-      // Undo web-ifc's default Y-up rotation so we emit IFC-native Z-up
-      // coords. The ground-plane projection is then (IFC_X, IFC_Y) =
-      // (mesh_X, -mesh_Z), which is what Helmert expects.
-      // 4x4 column-major; destructure only the cells we need (skipping
-      // the rest with empty slots) so each has a concrete `number` type —
-      // the array is guaranteed 16-long by web-ifc, defaults just satisfy
-      // `noUncheckedIndexedAccess`.
-      const [
-        m0 = 0,
-        ,
-        m2 = 0,
-        ,
-        m4 = 0,
-        ,
-        m6 = 0,
-        ,
-        m8 = 0,
-        ,
-        m10 = 0,
-        ,
-        m12 = 0,
-        ,
-        m14 = 0,
-      ] = placed.flatTransformation;
-      for (let index = 0; index < verts.length; index += 6) {
-        const x = verts[index];
-        const y = verts[index + 1];
-        const z = verts[index + 2];
-        if (x === undefined || y === undefined || z === undefined) {
-          continue;
-        }
-        const wx = m0 * x + m4 * y + m8 * z + m12;
-        const wz = m2 * x + m6 * y + m10 * z + m14;
-        xy.push([wx, -wz]);
+    const start = xy.length;
+    let zMin = Infinity;
+    let zMax = -Infinity;
+    for (let index = 0; index < vertices.length; index += 6) {
+      const x = vertices[index];
+      const y = vertices[index + 1];
+      const z = vertices[index + 2];
+      if (x === undefined || y === undefined || z === undefined) {
+        continue;
       }
-      geometry.delete();
+      transformPositionToIfcFrame(matrix, x, y, z, ifcXyz, 0);
+      const ifcZ = ifcXyz[2] ?? 0;
+      if (ifcZ < zMin) {
+        zMin = ifcZ;
+      }
+      if (ifcZ > zMax) {
+        zMax = ifcZ;
+      }
+      xy.push([ifcXyz[0] ?? 0, ifcXyz[1] ?? 0]);
     }
-    // Note: do NOT call mesh.delete() — the FlatMesh handed to the
-    // StreamAllMeshes callback is owned by the stream and freed after
-    // the callback returns. Calling delete() here throws at runtime
-    // (the method only exists on FlatMesh instances returned by
-    // GetFlatMesh / LoadAllGeometry, not on streamed meshes).
+    if (zMax >= sliceLo && zMin <= sliceHi) {
+      included += 1;
+    } else {
+      // Roll back: this mesh's Z range doesn't overlap the band.
+      xy.length = start;
+      skipped += 1;
+    }
+  });
+
+  emitLog({
+    source: "worker",
+    level: ground ? "info" : "warn",
+    message: ground
+      ? `Footprint: ground floor at Z=${ground.elevationM.toFixed(2)}m${ground.name ? ` ('${ground.name}')` : ""} (${included} meshes in slice, ${skipped} excluded)`
+      : `Footprint: no IfcBuildingStorey — using full-mesh hull (may include overhangs / basement)`,
   });
 
   if (xy.length < 3) {
     return null;
   }
-  const hull = polygonHull(xy as Array<[number, number]>);
-  if (!hull) {
-    return null;
-  }
-  return hull.map(([x, y]) => ({ x, y }));
+  const hull = polygonHull(xy);
+  return hull?.map(([x, y]) => ({ x, y })) ?? null;
 }

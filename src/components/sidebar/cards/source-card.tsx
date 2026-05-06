@@ -9,9 +9,22 @@ import { Row } from "./source-card/row";
 interface SourceCardProps {
   filename: string;
   metadata: IfcMetadata;
+  /**
+   * True when the file's IfcSite RefLat/RefLon falls outside the active
+   * CRS area of use. The map skips the marker; this card flags the value
+   * inline so the user notices the discrepancy.
+   */
+  siteOutsideBbox: boolean;
+  /** EPSG code of the active CRS, used in the outside-bbox tooltip. */
+  activeCrsCode: number | null;
 }
 
-export function SourceCard({ filename, metadata }: SourceCardProps) {
+export function SourceCard({
+  filename,
+  metadata,
+  siteOutsideBbox,
+  activeCrsCode,
+}: SourceCardProps) {
   const level = detectLevelOfGeoref(metadata);
 
   return (
@@ -22,7 +35,13 @@ export function SourceCard({ filename, metadata }: SourceCardProps) {
         <Row label="Length unit" value={metadata.lengthUnit} />
         <Row
           label="IfcSite reference"
-          value={formatSiteReference(metadata.siteReference)}
+          value={
+            <SiteReferenceValue
+              ref={metadata.siteReference}
+              outsideBbox={siteOutsideBbox}
+              activeCrsCode={activeCrsCode}
+            />
+          }
         />
         <Row label="Local origin" value={formatLocalOrigin(metadata.localOrigin)} />
         <Row label="TrueNorth" value={formatTrueNorth(metadata.trueNorth)} />
@@ -99,13 +118,34 @@ function detectLevelOfGeoref(metadata: IfcMetadata): LoGeoref {
   return "le10";
 }
 
-function formatSiteReference(
-  ref: IfcMetadata["siteReference"],
-): string {
+interface SiteReferenceValueProps {
+  ref: IfcMetadata["siteReference"];
+  outsideBbox: boolean;
+  activeCrsCode: number | null;
+}
+
+function SiteReferenceValue({
+  ref,
+  outsideBbox,
+  activeCrsCode,
+}: SiteReferenceValueProps) {
   if (!ref) {
-    return "Not present";
+    return <>Not present</>;
   }
-  return `${ref.latitude.toFixed(6)}°, ${ref.longitude.toFixed(6)}° · ${ref.elevation}m`;
+  const text = `${ref.latitude.toFixed(6)}°, ${ref.longitude.toFixed(6)}° · ${ref.elevation}m`;
+  if (!outsideBbox) {
+    return <>{text}</>;
+  }
+  const tooltip =
+    activeCrsCode === null
+      ? "Outside the active CRS area of use; not used on map."
+      : `Outside EPSG:${activeCrsCode} area of use; not used on map.`;
+  return (
+    <span className="text-rose-700" title={tooltip}>
+      <span aria-hidden="true" className="mr-1">⚠</span>
+      {text}
+    </span>
+  );
 }
 
 function formatLocalOrigin(origin: IfcMetadata["localOrigin"]): string {

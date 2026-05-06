@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useStickyState } from "../hooks/use-sticky-state";
 import { createPortal } from "react-dom";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getIfc } from "../ifc-api";
 import { projectLocalToWgs84, type CrsDef } from "#modules/crs";
 import { emitLog } from "../lib/log";
-import { deriveMapReference } from "./map/derive-reference";
+import type { MapReferences } from "./map/derive-references";
 import type { HelmertParams, PointPair } from "#modules/helmert/solve";
-import type { IfcMetadata } from "#modules/ifc/worker";
 import { LayersPanel } from "./map/controls/layers-panel";
 import { SearchBox } from "./map/controls/search-box";
 import { ViewToggle, type ViewMode } from "./map/controls/view-toggle";
@@ -15,19 +15,21 @@ import {
   useAnchorPicker,
   type PickedAnchor,
 } from "./map/hooks/use-anchor-picker";
-import {
-  computeAxesGeometry,
-  useAxesLayer,
-} from "./map/hooks/use-axes-layer";
+import { computeAxesGeometry, useAxesLayer } from "./map/hooks/use-axes-layer";
 import { useCrsAutoZoom } from "./map/hooks/use-crs-auto-zoom";
 import {
   frameCamera,
-  useFootprintLayer,
-} from "./map/hooks/use-footprint-layer";
+  useMapOverlays,
+} from "./map/hooks/use-map-overlays";
 import { useMapInit } from "./map/hooks/use-map-init";
 import { useMapLayers } from "./map/hooks/use-map-layers";
 import { useResidualsLayer } from "./map/hooks/use-residuals-layer";
 import { useThreeDLayer } from "./map/hooks/use-three-d-layer";
+import {
+  type CustomBasemap,
+  CustomBasemapsSchema,
+  CUSTOM_BASEMAPS_STORAGE_KEY,
+} from "./map/layers/custom-basemap";
 import {
   DEFAULT_BASEMAP_ID,
   INITIAL_OVERLAYS,
@@ -50,8 +52,6 @@ function deriveThreeDDisabled(
 }
 
 export interface MapViewProps {
-  /** Metadata of the loaded model — used to derive the map marker. */
-  metadata: IfcMetadata;
   /** Helmert params — used to anchor the 3D model on the globe. */
   parameters: HelmertParams | null;
   /**
@@ -61,6 +61,12 @@ export interface MapViewProps {
    * the definition registered.
    */
   activeCrs: CrsDef | null;
+  /**
+   * Derived WGS84 anchors for the IfcMapConversion and IfcSite sources.
+   * Computed in the parent so the sidebar can read `siteOutsideBbox` from
+   * the same struct without re-running the derivation.
+   */
+  references: MapReferences;
   /** True while the sidebar is awaiting a map click to set the anchor. */
   isPickingAnchor: boolean;
   /** Fires once per click while `isPickingAnchor` is true. */
@@ -80,9 +86,9 @@ export interface MapViewProps {
  * Helmert param edits don't require re-threading map data through props.
  */
 export function MapView({
-  metadata,
   parameters,
   activeCrs,
+  references,
   isPickingAnchor,
   onAnchorPicked,
   onCancelPickAnchor,
@@ -93,12 +99,19 @@ export function MapView({
   const [basemap, setBasemap] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
   const [overlays, setOverlays] =
     useState<Record<OverlayId, boolean>>(INITIAL_OVERLAYS);
+  const [customBasemaps, setCustomBasemaps] = useStickyState<
+    Array<CustomBasemap>
+  >(CUSTOM_BASEMAPS_STORAGE_KEY, [], { schema: CustomBasemapsSchema });
 
-  const referencePoint = useMemo(() => {
-    const result = deriveMapReference(metadata, activeCrs);
+  function handleAddCustomBasemap(b: CustomBasemap) {
+    setCustomBasemaps((previous) => [...previous, b]);
+    setBasemap(b.id);
+  }
 
-    return result.isOk() ? result.value : null;
-  }, [metadata, activeCrs]);
+  function handleRemoveCustomBasemap(id: string) {
+    setCustomBasemaps((previous) => previous.filter((b) => b.id !== id));
+    setBasemap((current) => (current === id ? DEFAULT_BASEMAP_ID : current));
+  }
 
   const [footprintLocal, setFootprintLocal] = useState<Array<{
     x: number;
@@ -151,7 +164,7 @@ export function MapView({
   }, [footprintLocal, parameters, activeCrs]);
 
   const { mapRef, portals } = useMapInit(containerRef);
-  
+
   const scope = useMapScope(mapRef);
 
   // Gate the 3D toggle: without solved Helmert params + a resolved CRS the
@@ -160,20 +173,27 @@ export function MapView({
   // these is lost, fall back to an *effective* 2D without mutating stored
   // view — so that if params come back they re-enter 3D automatically.
   const threeDDisabledReason = deriveThreeDDisabled(parameters, activeCrs);
-  const effectiveView: ViewMode =
-    threeDDisabledReason === null ? view : "2d";
+  const effectiveView: ViewMode = threeDDisabledReason === null ? view : "2d";
 
-  // "Anchor" here = anything that already tells the map where to point —
-  // solved Helmert params, or an IfcSite lat/lon (the footprint hook flies to
-  // those via `referencePoint`). When present, let those hooks own the
-  // camera; otherwise fall back to the CRS's area of use.
-  const hasAnchor = parameters != null || metadata.siteReference != null;
+  // "Anchor" = anything the overlay hook can frame to. We use the *filtered*
+  // siteReference (null when outside the active CRS bbox) so an out-of-bbox
+  // IfcSite doesn't suppress the CRS-area auto-zoom — there'd be nothing on
+  // the map to look at otherwise.
+  const hasAnchor = parameters != null || references.siteReference != null;
   const axesGeometry = useMemo(
     () => computeAxesGeometry(parameters, activeCrs),
     [parameters, activeCrs],
   );
+  const overlaySignals = useMemo(
+    () => ({
+      footprint: footprintLngLat,
+      mapConversion: references.mapConversion,
+      siteReference: references.siteReference,
+    }),
+    [footprintLngLat, references],
+  );
   useCrsAutoZoom(mapRef, activeCrs, hasAnchor);
-  useFootprintLayer(mapRef, referencePoint, footprintLngLat);
+  useMapOverlays(mapRef, overlaySignals);
   useAxesLayer(mapRef, axesGeometry);
   useResidualsLayer(mapRef, residualsPoints, parameters, activeCrs);
   useThreeDLayer(mapRef, {
@@ -181,7 +201,7 @@ export function MapView({
     parameters,
     activeCrs,
   });
-  useMapLayers(mapRef, { basemap, overlays });
+  useMapLayers(mapRef, { basemap, overlays, customBasemaps });
   useAnchorPicker(mapRef, isPickingAnchor, onAnchorPicked, onCancelPickAnchor);
 
   return (
@@ -201,9 +221,12 @@ export function MapView({
             <LayersPanel
               basemap={basemap}
               overlays={overlays}
+              customBasemaps={customBasemaps}
               scope={scope}
               onBasemapChange={setBasemap}
               onOverlaysChange={setOverlays}
+              onAddCustomBasemap={handleAddCustomBasemap}
+              onRemoveCustomBasemap={handleRemoveCustomBasemap}
             />,
             portals.layers,
           )}
@@ -211,16 +234,16 @@ export function MapView({
           {createPortal(
             <ZoomToModel
               isDisabled={
-                footprintLngLat === null && referencePoint === null
+                overlaySignals.footprint === null
+                && overlaySignals.mapConversion === null
+                && overlaySignals.siteReference === null
               }
               onPress={() => {
                 const map = mapRef.current;
                 if (!map) {
                   return;
                 }
-                frameCamera(map, referencePoint, footprintLngLat, {
-                  duration: 600,
-                });
+                frameCamera(map, overlaySignals, { duration: 600 });
               }}
             />,
             portals.zoomToModel,

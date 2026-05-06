@@ -20,6 +20,7 @@ interface MeshOrigin {
   y: number;
   z: number;
 }
+
 type Meshes = Awaited<ReturnType<IfcFacade["extractMeshes"]>>;
 
 /**

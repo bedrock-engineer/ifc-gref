@@ -1,5 +1,23 @@
-import { Checkbox, Label, RadioGroup } from "react-aria-components";
+import { useState } from "react";
+import {
+  Button as AriaButton,
+  Checkbox,
+  Dialog,
+  DialogTrigger,
+  Input,
+  Label,
+  Popover,
+  RadioGroup,
+  Text,
+  TextField,
+} from "react-aria-components";
+import { Button } from "../../button";
 import { RadioButton } from "../../radio-button";
+import {
+  type CustomBasemap,
+  describeCustomBasemapUrlError,
+  parseCustomBasemapUrl,
+} from "../layers/custom-basemap";
 import {
   BASEMAPS,
   OVERLAYS,
@@ -12,10 +30,13 @@ import type { MapScope } from "./use-scope";
 interface LayersPanelProps {
   basemap: BasemapId;
   overlays: Record<OverlayId, boolean>;
+  customBasemaps: ReadonlyArray<CustomBasemap>;
   /** Current geographic scope of the map (tracks `useMapMapScope`). */
   scope: MapScope;
   onBasemapChange: (id: BasemapId) => void;
   onOverlaysChange: (next: Record<OverlayId, boolean>) => void;
+  onAddCustomBasemap: (b: CustomBasemap) => void;
+  onRemoveCustomBasemap: (id: string) => void;
 }
 
 const HEADING =
@@ -38,16 +59,19 @@ function isOutOfMapScope(region: LayerRegion, scope: MapScope): boolean {
 }
 
 /**
- * Rendered into the map via `PortalControl`. Basemaps + overlays come
- * straight from the layer registry — to add a new one, edit
- * `map/layers/registry.ts`, not this component.
+ * Rendered into the map via `PortalControl`. Built-in basemaps + overlays
+ * come from the layer registry; custom basemaps are user-added at runtime
+ * and live alongside them in the same RadioGroup.
  */
 export function LayersPanel({
   basemap,
   overlays,
+  customBasemaps,
   scope,
   onBasemapChange,
   onOverlaysChange,
+  onAddCustomBasemap,
+  onRemoveCustomBasemap,
 }: LayersPanelProps) {
   return (
     <div className="min-w-[140px] space-y-1.5 rounded bg-white p-2.5 text-xs text-slate-900 shadow-[0_0_0_2px_rgba(0,0,0,0.1)]">
@@ -56,7 +80,16 @@ export function LayersPanel({
         onChange={onBasemapChange}
         className="flex flex-col"
       >
-        <Label className={HEADING}>Basemap</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label className={HEADING}>Basemap</Label>
+          <AddCustomBasemapButton
+            existingIds={[
+              ...BASEMAPS.map((b) => b.id),
+              ...customBasemaps.map((b) => b.id),
+            ]}
+            onAdd={onAddCustomBasemap}
+          />
+        </div>
         {BASEMAPS.map((b) => {
           const outOfMapScope = isOutOfMapScope(b.region, scope);
           const isActive = b.id === basemap;
@@ -73,6 +106,22 @@ export function LayersPanel({
             </RadioButton>
           );
         })}
+        {customBasemaps.map((b) => (
+          <div key={b.id} className="flex items-center gap-1.5">
+            <RadioButton value={b.id} className={`${ROW} flex-1 min-w-0`}>
+              <span className="truncate" title={b.url}>
+                {b.label}
+              </span>
+            </RadioButton>
+            <AriaButton
+              aria-label={`Remove ${b.label}`}
+              onPress={() => { onRemoveCustomBasemap(b.id); }}
+              className="cursor-pointer rounded px-1 text-slate-400 outline-none hover:text-slate-700 data-focus-visible:ring-2 data-focus-visible:ring-slate-500"
+            >
+              ×
+            </AriaButton>
+          </div>
+        ))}
       </RadioGroup>
       {OVERLAYS.length > 0 && (
         <div className="flex flex-col pt-1">
@@ -115,5 +164,201 @@ export function LayersPanel({
         </div>
       )}
     </div>
+  );
+}
+
+interface AddCustomBasemapButtonProps {
+  existingIds: ReadonlyArray<string>;
+  onAdd: (b: CustomBasemap) => void;
+}
+
+function AddCustomBasemapButton({
+  existingIds,
+  onAdd,
+}: AddCustomBasemapButtonProps) {
+  return (
+    <DialogTrigger>
+      <AriaButton
+        aria-label="Add custom basemap"
+        className="flex size-5 cursor-pointer items-center justify-center rounded text-slate-500 outline-none hover:bg-slate-100 hover:text-slate-900 data-focus-visible:ring-2 data-focus-visible:ring-slate-500"
+      >
+        <PlusIcon />
+      </AriaButton>
+      <Popover
+        placement="bottom end"
+        className="w-72 rounded border border-slate-200 bg-white p-3 shadow-md outline-none"
+      >
+        <Dialog className="outline-none">
+          {({ close }) => (
+            <AddCustomBasemapForm
+              existingIds={existingIds}
+              onAdd={(b) => {
+                onAdd(b);
+                close();
+              }}
+              onCancel={close}
+            />
+          )}
+        </Dialog>
+      </Popover>
+    </DialogTrigger>
+  );
+}
+
+interface AddCustomBasemapFormProps {
+  existingIds: ReadonlyArray<string>;
+  onAdd: (b: CustomBasemap) => void;
+  onCancel: () => void;
+}
+
+function AddCustomBasemapForm({
+  existingIds,
+  onAdd,
+  onCancel,
+}: AddCustomBasemapFormProps) {
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  // `null` while the user hasn't tried to submit yet — keeps the fields neutral
+  // until they actually commit, instead of nagging on every keystroke.
+  const [submittedNameError, setSubmittedNameError] = useState<string | null>(
+    null,
+  );
+  const [submittedUrlError, setSubmittedUrlError] = useState<string | null>(
+    null,
+  );
+
+  const trimmedName = name.trim();
+  const liveUrlResult =
+    url.trim().length === 0 ? null : parseCustomBasemapUrl(url);
+  const liveUrlError =
+    submittedUrlError ??
+    (liveUrlResult?.isErr()
+      ? describeCustomBasemapUrlError(liveUrlResult.error)
+      : null);
+  const nameError = submittedNameError;
+
+  function handleSubmit() {
+    const urlResult = parseCustomBasemapUrl(url);
+    const nameInvalid = trimmedName.length === 0;
+    if (nameInvalid) {
+      setSubmittedNameError("Enter a name.");
+    }
+    if (urlResult.isErr()) {
+      setSubmittedUrlError(describeCustomBasemapUrlError(urlResult.error));
+    }
+    if (nameInvalid || urlResult.isErr()) {
+      return;
+    }
+    onAdd({
+      id: makeUniqueId(existingIds),
+      label: trimmedName,
+      url: urlResult.value,
+    });
+  }
+
+  return (
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        handleSubmit();
+      }}
+    >
+      <TextField
+        value={name}
+        onChange={(value) => {
+          setName(value);
+          if (submittedNameError !== null) {
+            setSubmittedNameError(null);
+          }
+        }}
+        isInvalid={nameError !== null}
+      >
+        <Label className="text-xs font-medium text-slate-700">Name</Label>
+        <Input
+          autoFocus
+          placeholder="e.g. GRB Vlaanderen"
+          className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs outline-none focus:border-slate-500 data-invalid:border-amber-500"
+        />
+        <Text
+          slot="description"
+          className={
+            nameError === null
+              ? "mt-1 block text-[11px] text-slate-500"
+              : "mt-1 block text-[11px] text-amber-700"
+          }
+        >
+          {nameError ?? "Shown in the basemap list."}
+        </Text>
+      </TextField>
+
+      <TextField
+        type="url"
+        value={url}
+        onChange={(value) => {
+          setUrl(value);
+          if (submittedUrlError !== null) {
+            setSubmittedUrlError(null);
+          }
+        }}
+        isInvalid={liveUrlError !== null}
+      >
+        <Label className="text-xs font-medium text-slate-700">
+          XYZ tile URL
+        </Label>
+        <Input
+          placeholder="https://…/{z}/{x}/{y}.png"
+          className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 font-mono text-xs outline-none focus:border-slate-500 data-invalid:border-amber-500"
+        />
+        <Text
+          slot="description"
+          className={
+            liveUrlError === null
+              ? "mt-1 block text-[11px] text-slate-500"
+              : "mt-1 block text-[11px] text-amber-700"
+          }
+        >
+          {liveUrlError ??
+            "Use {z}, {x}, {y} placeholders. Example: swisstopo, GRB Vlaanderen."}
+        </Text>
+      </TextField>
+
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <Button variant="ghost" size="sm" onPress={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" size="sm">
+          Add
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function makeUniqueId(existing: ReadonlyArray<string>): string {
+  // Stable enough for client-only state — survives reload via localStorage.
+  // Doesn't have to be globally unique, just unique within the panel.
+  let candidate: string;
+  do {
+    candidate = `cb-${Math.random().toString(36).slice(2, 8)}`;
+  } while (existing.includes(candidate));
+  return candidate;
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
   );
 }

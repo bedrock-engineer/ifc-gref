@@ -73,5 +73,15 @@ export function useTargetCrs({
     });
   }
 
-  return { epsgCode, crsState, activeCrs, changeEpsg };
+  /**
+   * Set the EPSG code directly, bypassing the swap-time reprojection.
+   * Used by sidecar import: the sidecar's E/N/H are authoritative for the
+   * new CRS, so reprojecting the *old* anchor would discard the values
+   * we're about to apply.
+   */
+  function replaceEpsg(nextCode: string) {
+    setEpsgCode(nextCode);
+  }
+
+  return { epsgCode, crsState, activeCrs, changeEpsg, replaceEpsg };
 }

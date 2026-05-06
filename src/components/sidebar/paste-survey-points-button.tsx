@@ -146,7 +146,7 @@ function PasteParseStatus({
   if (parsed === null) {
     return (
       <p className="text-xs text-slate-400">
-        Waiting for paste, two example rows shown above.
+        Waiting for paste, example rows shown above.
       </p>
     );
   }

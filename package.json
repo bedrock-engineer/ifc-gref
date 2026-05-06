@@ -52,7 +52,7 @@
     "d3-scale": "^4.0.2",
     "geotiff": "3.0.5",
     "maplibre-gl": "^5.23.0",
-    "ml-levenberg-marquardt": "^5.0.0",
+    "ml-levenberg-marquardt": "^5.0.1",
     "neverthrow": "^8.2.0",
     "proj4": "^2.20.8",
     "react": "^19.2.5",
@@ -63,7 +63,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@eslint-react/eslint-plugin": "^4.2.3",
+    "@eslint-react/eslint-plugin": "^5.7.2",
     "@eslint/js": "^10.0.1",
     "@rolldown/plugin-babel": "^0.2.3",
     "@tailwindcss/vite": "^4.2.2",

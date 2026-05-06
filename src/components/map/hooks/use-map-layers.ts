@@ -8,6 +8,7 @@
 import type { Map as MlMap } from "maplibre-gl";
 import { type RefObject, useEffect, useRef } from "react";
 import { emitLog } from "../../../lib/log";
+import type { CustomBasemap } from "../layers/custom-basemap";
 import {
   BASEMAPS,
   OVERLAYS,
@@ -19,11 +20,22 @@ import type { CustomOverlayHandle, OverlayDef } from "../layers/types";
 interface UseMapLayersArguments {
   basemap: BasemapId;
   overlays: Record<OverlayId, boolean>;
+  /** User-added XYZ raster basemaps. Lifecycle is managed dynamically:
+   *  added/removed from the live MapLibre style as this array changes. */
+  customBasemaps: ReadonlyArray<CustomBasemap>;
+}
+
+/** Prefix for source/layer ids of user-added basemaps; keeps them out of
+ *  the namespace of registry layers. */
+const CUSTOM_BASEMAP_PREFIX = "custom-basemap-";
+
+function customBasemapLayerId(id: string): string {
+  return `${CUSTOM_BASEMAP_PREFIX}${id}`;
 }
 
 export function useMapLayers(
   mapRef: RefObject<MlMap | null>,
-  { basemap, overlays }: UseMapLayersArguments,
+  { basemap, overlays, customBasemaps }: UseMapLayersArguments,
 ): void {
   // Live handles for custom overlays, keyed by overlay id. Held in a ref
   // so it survives re-renders; teardown runs on unmount.
@@ -42,6 +54,7 @@ export function useMapLayers(
     let cancelled = false;
 
     const apply = () => {
+      syncCustomBasemaps(map, customBasemaps, basemap);
       syncBasemaps(map, basemap);
       syncRasterOverlays(map, overlays);
       syncCustomOverlays(
@@ -75,7 +88,7 @@ export function useMapLayers(
       cancelled = true;
       map.off("load", handleLoad);
     };
-  }, [mapRef, basemap, overlays]);
+  }, [mapRef, basemap, overlays, customBasemaps]);
 
   useEffect(function disposeCustomOverlaysOnUnmount() {
     const ref = customHandlesRef;
@@ -95,6 +108,68 @@ function syncBasemaps(map: MlMap, activeBasemap: BasemapId) {
     }
     map.setLayoutProperty(
       b.layer.id,
+      "visibility",
+      b.id === activeBasemap ? "visible" : "none",
+    );
+  }
+}
+
+/**
+ * Reconcile user-added XYZ basemaps with the live style. Built-in basemaps
+ * sit in the style spec from startup; custom ones are unknown until the
+ * user enters one, so we add/remove sources and layers on the fly.
+ *
+ * Layers are inserted *before* the first registry basemap so they share
+ * the basemap z-order — overlays still draw on top.
+ */
+function syncCustomBasemaps(
+  map: MlMap,
+  basemaps: ReadonlyArray<CustomBasemap>,
+  activeBasemap: BasemapId,
+) {
+  const wantedIds = new Set(basemaps.map((b) => b.id));
+
+  // Remove any custom basemap layer/source that's no longer in the list.
+  for (const layer of map.getStyle().layers) {
+    if (!layer.id.startsWith(CUSTOM_BASEMAP_PREFIX)) {
+      continue;
+    }
+    const id = layer.id.slice(CUSTOM_BASEMAP_PREFIX.length);
+    if (!wantedIds.has(id)) {
+      map.removeLayer(layer.id);
+      if (map.getSource(layer.id)) {
+        map.removeSource(layer.id);
+      }
+    }
+  }
+
+  // Insert before the first known basemap layer so registry basemaps and
+  // user basemaps share the same band of the layer stack.
+  const insertBefore = BASEMAPS.find((b) => map.getLayer(b.layer.id))
+    ?.layer.id;
+
+  for (const b of basemaps) {
+    const layerId = customBasemapLayerId(b.id);
+    if (!map.getSource(layerId)) {
+      map.addSource(layerId, {
+        type: "raster",
+        tiles: [b.url],
+        tileSize: 256,
+      });
+    }
+    if (!map.getLayer(layerId)) {
+      map.addLayer(
+        {
+          id: layerId,
+          type: "raster",
+          source: layerId,
+          layout: { visibility: "none" },
+        },
+        insertBefore,
+      );
+    }
+    map.setLayoutProperty(
+      layerId,
       "visibility",
       b.id === activeBasemap ? "visible" : "none",
     );

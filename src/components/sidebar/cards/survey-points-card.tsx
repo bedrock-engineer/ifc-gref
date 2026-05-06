@@ -1,9 +1,4 @@
-import { useReducer, useState } from "react";
-import { Button as AriaButton, Label, RadioGroup } from "react-aria-components";
-import { Button } from "../../button";
-import { RadioButton } from "../../radio-button";
-import type { CrsDef } from "#modules/crs";
-import { describeCrsUnit, describeIfcUnit } from "#modules/units/format";
+import { type CrsDef, transformWgs84ToProjected } from "#modules/crs";
 import type {
   HelmertParams,
   PointPair,
@@ -12,6 +7,12 @@ import type {
 } from "#modules/helmert/solve";
 import type { ParsedPointRow } from "#modules/helmert/survey-point-paste";
 import type { IfcMetadata } from "#modules/ifc/worker";
+import { unitToMetres } from "#modules/units/convert";
+import { describeCrsUnit, describeIfcUnit } from "#modules/units/format";
+import { type ReactNode, useReducer, useState } from "react";
+import { Button as AriaButton, Label, RadioGroup } from "react-aria-components";
+import { Button } from "../../button";
+import { RadioButton } from "../../radio-button";
 import { NumberField } from "../number-field";
 import { PasteSurveyPointsButton } from "../paste-survey-points-button";
 import { ResidualsTable } from "../residuals-table";
@@ -181,6 +182,10 @@ export function SurveyPointsCard({
 
   const canSolve = blockedReason === null && !busy;
 
+  const showSiteAnchor =
+    (mode === "use-existing" || mode === "add-to-existing") && hasSite;
+  const showPointsTable = mode !== "use-existing";
+
   function handleComputeTransform() {
     if (!canSolve) {
       return;
@@ -201,8 +206,8 @@ export function SurveyPointsCard({
 
         <ModeOption
           value="use-existing"
-          label="IfcSite reference only"
-          hint="LoGeoRef 20 → 50. No extra points."
+          label="Encode existing IfcSite as IfcMapConversion"
+          hint="LoGeoRef 20 → 50, no accuracy gain."
           disabled={!hasSite}
         />
 
@@ -220,7 +225,7 @@ export function SurveyPointsCard({
         />
       </RadioGroup>
 
-      {mode !== "use-existing" && (
+      {(showSiteAnchor || showPointsTable) && (
         <div className="space-y-2">
           <div className="flex items-baseline justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
             <span>
@@ -239,41 +244,54 @@ export function SurveyPointsCard({
             </span>
           </div>
 
-          {points.map((point, index) => (
-            <PointMiniCard
-              key={point.id}
-              index={index}
-              point={point}
+          {showSiteAnchor && (
+            <IfcSiteAnchorMiniCard
+              metadata={metadata}
+              activeCrs={activeCrs}
               engineeringFormat={numberFieldFormat(ifcUnit.intl)}
               projectedFormat={numberFieldFormat(crsUnit.intl)}
-              canRemove={points.length > 1}
-              onField={(key, value) => {
-                dispatch({ type: "update", index, key, value });
-              }}
-              onRemove={() => {
-                dispatch({ type: "remove", index });
-              }}
             />
-          ))}
+          )}
 
-          <div className="flex items-stretch gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onPress={() => {
-                dispatch({ type: "add" });
-              }}
-              className="flex-1"
-            >
-              + Add point
-            </Button>
-            <PasteSurveyPointsButton
-              currentPointCount={points.length}
-              onReplace={(rows) => {
-                dispatch({ type: "replaceAll", rows });
-              }}
-            />
-          </div>
+          {showPointsTable && (
+            <>
+              {points.map((point, index) => (
+                <PointMiniCard
+                  key={point.id}
+                  index={index}
+                  point={point}
+                  engineeringFormat={numberFieldFormat(ifcUnit.intl)}
+                  projectedFormat={numberFieldFormat(crsUnit.intl)}
+                  canRemove={points.length > 1}
+                  onField={(key, value) => {
+                    dispatch({ type: "update", index, key, value });
+                  }}
+                  onRemove={() => {
+                    dispatch({ type: "remove", index });
+                  }}
+                />
+              ))}
+
+              <div className="flex items-stretch gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    dispatch({ type: "add" });
+                  }}
+                  className="flex-1"
+                >
+                  + Add point
+                </Button>
+                <PasteSurveyPointsButton
+                  currentPointCount={points.length}
+                  onReplace={(rows) => {
+                    dispatch({ type: "replaceAll", rows });
+                  }}
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -302,6 +320,167 @@ export function SurveyPointsCard({
   );
 }
 
+const AXES = ["x", "y", "z"] as const;
+type Axis = (typeof AXES)[number];
+
+interface AxesValues {
+  x: number | null;
+  y: number | null;
+  z: number | null;
+}
+
+interface PointPairAxesGridProps {
+  /** Prefix for aria labels — e.g. "Point 1" → "Point 1 engineering X". */
+  ariaPrefix: string;
+  engineering: AxesValues;
+  projected: AxesValues | null;
+  engineeringFormat: Intl.NumberFormatOptions;
+  projectedFormat: Intl.NumberFormatOptions;
+  isDisabled?: boolean;
+  onEngineering?: (axis: Axis, value: number) => void;
+  onProjected?: (axis: Axis, value: number) => void;
+  /** Rendered in place of the projected NumberFields when `projected` is null. */
+  projectedFallback?: ReactNode;
+}
+
+/**
+ * Shared 4-col grid (label · X · Y · Z) with two rows of NumberFields:
+ * Engineering (file frame) and Projected (CRS frame). Both `PointMiniCard`
+ * (editable) and `IfcSiteAnchorMiniCard` (locked) render through this so the
+ * column widths, gaps, and header row stay in lockstep.
+ */
+function PointPairAxesGrid({
+  ariaPrefix,
+  engineering,
+  projected,
+  engineeringFormat,
+  projectedFormat,
+  isDisabled,
+  onEngineering,
+  onProjected,
+  projectedFallback,
+}: PointPairAxesGridProps) {
+  return (
+    <div className="grid grid-cols-[5.5rem_1fr_1fr_1fr] items-center gap-y-1.5 gap-x-1 text-xs text-slate-500">
+      <span />
+      {AXES.map((axis) => (
+        <span key={`h-${axis}`} className="pl-2 font-mono">
+          {axis.toUpperCase()}
+        </span>
+      ))}
+
+      <span>Engineering</span>
+      {AXES.map((axis) => (
+        <NumberField
+          key={`e-${axis}`}
+          ariaLabel={`${ariaPrefix} engineering ${axis.toUpperCase()}`}
+          value={engineering[axis]}
+          formatOptions={engineeringFormat}
+          hideSteppers
+          isDisabled={isDisabled}
+          onChange={(v) => onEngineering?.(axis, v)}
+        />
+      ))}
+
+      <span>Projected</span>
+      {projected
+        ? AXES.map((axis) => (
+            <NumberField
+              key={`p-${axis}`}
+              ariaLabel={`${ariaPrefix} projected ${axis.toUpperCase()}`}
+              value={projected[axis]}
+              formatOptions={projectedFormat}
+              hideSteppers
+              isDisabled={isDisabled}
+              onChange={(v) => onProjected?.(axis, v)}
+            />
+          ))
+        : projectedFallback && (
+            <div className="col-span-3">{projectedFallback}</div>
+          )}
+    </div>
+  );
+}
+
+interface IfcSiteAnchorMiniCardProps {
+  metadata: IfcMetadata;
+  activeCrs: CrsDef | null;
+  engineeringFormat: Intl.NumberFormatOptions;
+  projectedFormat: Intl.NumberFormatOptions;
+}
+
+/**
+ * Locked read-only mirror of the implicit point pair contributed by the
+ * IfcSite reference in `use-existing` / `add-to-existing` modes — same
+ * grid as `PointMiniCard`, all NumberFields disabled. Engineering values
+ * shown in file-native units, projected values in CRS-native units, so
+ * they match the unit headers shared with the user-input cards.
+ */
+function IfcSiteAnchorMiniCard({
+  metadata,
+  activeCrs,
+  engineeringFormat,
+  projectedFormat,
+}: IfcSiteAnchorMiniCardProps) {
+  const site = metadata.siteReference;
+  const origin = metadata.localOrigin;
+  if (!site || !origin) {
+    return null;
+  }
+
+  // localOrigin is metres (worker boundary 1) — divide back out so the
+  // displayed numbers carry the unit in the shared header above.
+  const ifcMetresPerUnit = unitToMetres(metadata.lengthUnit).unwrapOr(1);
+  const localX = origin.x / ifcMetresPerUnit;
+  const localY = origin.y / ifcMetresPerUnit;
+  const localZ = origin.z / ifcMetresPerUnit;
+
+  const projected = activeCrs
+    ? transformWgs84ToProjected({
+        def: activeCrs,
+        longitude: site.longitude,
+        latitude: site.latitude,
+        elevation: site.elevation,
+      })
+    : null;
+  // transformWgs84ToProjected returns metres (proj4 boundary). Divide by
+  // metresPerUnit to land in CRS-native units (matches the projected
+  // column unit in the header).
+  const crsMetresPerUnit = activeCrs?.metresPerUnit ?? 1;
+  const projectedNative: AxesValues | null =
+    projected && projected.isOk()
+      ? {
+          x: projected.value.x / crsMetresPerUnit,
+          y: projected.value.y / crsMetresPerUnit,
+          z: projected.value.z / crsMetresPerUnit,
+        }
+      : null;
+
+  return (
+    <div className="space-y-1.5 rounded border border-slate-200 bg-slate-50 p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          IfcSite anchor
+        </span>
+        <span className="text-[10px] text-slate-400">from file (locked)</span>
+      </div>
+      <PointPairAxesGrid
+        ariaPrefix="IfcSite"
+        engineering={{ x: localX, y: localY, z: localZ }}
+        projected={projectedNative}
+        engineeringFormat={engineeringFormat}
+        projectedFormat={projectedFormat}
+        isDisabled
+        projectedFallback={
+          <span className="pl-2 italic text-slate-400">
+            {activeCrs ? "Projection unavailable" : "Set target CRS"}
+          </span>
+        }
+      />
+    </div>
+  );
+}
+
 interface ModeOptionProps {
   value: SurveyMode;
   label: string;
@@ -324,6 +503,17 @@ function ModeOption({ value, label, hint, disabled }: ModeOptionProps) {
     </RadioButton>
   );
 }
+
+const ENGINEERING_KEYS: Record<Axis, keyof PointDraft> = {
+  x: "localX",
+  y: "localY",
+  z: "localZ",
+};
+const PROJECTED_KEYS: Record<Axis, keyof PointDraft> = {
+  x: "targetX",
+  y: "targetY",
+  z: "targetZ",
+};
 
 interface PointMiniCardProps {
   index: number;
@@ -360,78 +550,19 @@ function PointMiniCard({
           </AriaButton>
         )}
       </div>
-      <div className="grid grid-cols-[5.5rem_1fr_1fr_1fr] items-center gap-y-1.5 gap-x-1 text-xs text-slate-500">
-        <span />
-        <span className="pl-2 font-mono">X</span>
-
-        <span className="pl-2 font-mono">Y</span>
-        
-        <span className="pl-2 font-mono">Z</span>
-        
-        <span>Engineering</span>
-        
-        <NumberField
-          ariaLabel={`Point ${index + 1} engineering X`}
-          value={point.localX}
-          formatOptions={engineeringFormat}
-          hideSteppers
-          onChange={(v) => {
-            onField("localX", v);
-          }}
-        />
-
-        <NumberField
-          ariaLabel={`Point ${index + 1} engineering Y`}
-          value={point.localY}
-          formatOptions={engineeringFormat}
-          hideSteppers
-          onChange={(v) => {
-            onField("localY", v);
-          }}
-        />
-
-        <NumberField
-          ariaLabel={`Point ${index + 1} engineering Z`}
-          value={point.localZ}
-          formatOptions={engineeringFormat}
-          hideSteppers
-          onChange={(v) => {
-            onField("localZ", v);
-          }}
-        />
-
-        <span>Projected</span>
-        
-        <NumberField
-          ariaLabel={`Point ${index + 1} projected X`}
-          value={point.targetX}
-          formatOptions={projectedFormat}
-          hideSteppers
-          onChange={(v) => {
-            onField("targetX", v);
-          }}
-        />
-
-        <NumberField
-          ariaLabel={`Point ${index + 1} projected Y`}
-          value={point.targetY}
-          formatOptions={projectedFormat}
-          hideSteppers
-          onChange={(v) => {
-            onField("targetY", v);
-          }}
-        />
-        
-        <NumberField
-          ariaLabel={`Point ${index + 1} projected Z`}
-          value={point.targetZ}
-          formatOptions={projectedFormat}
-          hideSteppers
-          onChange={(v) => {
-            onField("targetZ", v);
-          }}
-        />
-      </div>
+      <PointPairAxesGrid
+        ariaPrefix={`Point ${index + 1}`}
+        engineering={{ x: point.localX, y: point.localY, z: point.localZ }}
+        projected={{ x: point.targetX, y: point.targetY, z: point.targetZ }}
+        engineeringFormat={engineeringFormat}
+        projectedFormat={projectedFormat}
+        onEngineering={(axis, value) => {
+          onField(ENGINEERING_KEYS[axis], value);
+        }}
+        onProjected={(axis, value) => {
+          onField(PROJECTED_KEYS[axis], value);
+        }}
+      />
     </div>
   );
 }

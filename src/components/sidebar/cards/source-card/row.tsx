@@ -1,6 +1,8 @@
+import type { ReactNode } from "react";
+
 interface RowProps {
   label: string;
-  value: string;
+  value: ReactNode;
   /**
    * Allow the value to wrap across lines instead of truncating with an
    * ellipsis. Default false — most rows hold short values (coords, EPSG

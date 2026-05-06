@@ -17,8 +17,7 @@ interface SaveCardProps {
 /**
  * Pinned action strip at the bottom of the sidebar. Lives outside the scroll
  * region so the download action is always reachable when the sidebar content
- * overflows. One button: writes IfcMapConversion and triggers the browser
- * download in a single step.
+ * overflows. Writes IfcMapConversion and triggers the browser download.
  */
 export function SaveCard({
   busy,

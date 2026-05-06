@@ -1,8 +1,16 @@
-import { Activity, useEffect, useMemo, useReducer, useState } from "react";
+import { Activity, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { projectLocalToWgs84 } from "#modules/crs";
 import { type HelmertParams } from "#modules/helmert/solve";
 import { emitLog } from "../lib/log";
+import {
+  buildSidecar,
+  localOriginsEqual,
+  parseSidecar,
+  sidecarFilenameFor,
+  sidecarToParams,
+  type SidecarError,
+} from "../lib/ifcgref-sidecar";
 import { unitToMetres } from "#modules/units/convert";
 import {
   anchorParams,
@@ -13,6 +21,7 @@ import {
   makeAnchorReducer,
 } from "#state/workspace";
 import type { IfcMetadata } from "#modules/ifc/worker";
+import { deriveMapReferences } from "./map/derive-references";
 import { MapView } from "./map-view";
 import { AnchorCard } from "./sidebar/cards/anchor-card";
 import { RotationCard } from "./sidebar/cards/rotation-card";
@@ -44,14 +53,15 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     onError(message);
   }
 
-  const { epsgCode, crsState, activeCrs, changeEpsg } = useTargetCrs({
-    metadata,
-    currentParams: anchorParams(anchor),
-    onReproject: (params) => {
-      dispatchAnchor({ type: "paramsReplaced", params });
-    },
-    onError: reportError,
-  });
+  const { epsgCode, crsState, activeCrs, changeEpsg, replaceEpsg } =
+    useTargetCrs({
+      metadata,
+      currentParams: anchorParams(anchor),
+      onReproject: (params) => {
+        dispatchAnchor({ type: "paramsReplaced", params });
+      },
+      onError: reportError,
+    });
 
   // Vertical datum is independent of the horizontal CRS lookup. IFC
   // stores it as a free-form IfcIdentifier, not an EPSG code, so it lives
@@ -95,6 +105,32 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     anchor,
     effectiveHelmertParameters !== null,
   );
+
+  const references = useMemo(
+    () => deriveMapReferences(metadata, effectiveHelmertParameters, activeCrs),
+    [metadata, effectiveHelmertParameters, activeCrs],
+  );
+
+  // Log a one-shot warning the first time IfcSite is detected as outside
+  // the active CRS area. The map silently drops the marker (the value is
+  // unusable as a projected anchor); the log entry plus the inline
+  // sidebar badge make sure the user finds out.
+  const previousSiteOutsideBboxRef = useRef(false);
+  useEffect(() => {
+    const site = metadata.siteReference;
+    if (
+      references.siteOutsideBbox
+      && !previousSiteOutsideBboxRef.current
+      && site
+    ) {
+      const where = activeCrs ? `EPSG:${activeCrs.code}` : "the active CRS";
+      emitLog({
+        level: "warn",
+        message: `IfcSite RefLat/RefLon (${site.latitude.toFixed(6)}, ${site.longitude.toFixed(6)}) is outside ${where} area of use — not shown on map.`,
+      });
+    }
+    previousSiteOutsideBboxRef.current = references.siteOutsideBbox;
+  }, [references.siteOutsideBbox, metadata.siteReference, activeCrs]);
 
   const { solve, lastFitPoints } = useHelmertSolve({
     metadata,
@@ -220,6 +256,67 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     bakedProjectedOrigin,
   ]);
 
+  function handleDownloadSidecar() {
+    if (!effectiveHelmertParameters || !activeCrs) {
+      return;
+    }
+    const sidecar = buildSidecar({
+      filename,
+      schema: metadata.schema,
+      localOrigin: metadata.localOrigin,
+      activeCrs,
+      verticalDatum,
+      parameters: effectiveHelmertParameters,
+    });
+    const json = JSON.stringify(sidecar, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = sidecarFilenameFor(filename);
+    anchor.click();
+    URL.revokeObjectURL(url);
+    emitLog({
+      message:
+        `Exported .ifcgref.json sidecar (EPSG:${activeCrs.code}` +
+        (verticalDatum ? `, vertical=${verticalDatum}` : "") +
+        ")",
+    });
+  }
+
+  async function handleApplySidecar(file: File) {
+    let text: string;
+    try {
+      text = await file.text();
+    } catch (cause) {
+      reportError(`Couldn't read sidecar file: ${String(cause)}`);
+      return;
+    }
+    const parsed = parseSidecar(text);
+    if (parsed.isErr()) {
+      reportError(sidecarErrorMessage(parsed.error));
+      return;
+    }
+    const sidecar = parsed.value;
+    const params = sidecarToParams(sidecar);
+    const originsMatch = localOriginsEqual(
+      sidecar.source.localOrigin,
+      metadata.localOrigin,
+    );
+    replaceEpsg(String(sidecar.projectedCrs.epsg));
+    setVerticalDatum(sidecar.projectedCrs.verticalDatum);
+    dispatchAnchor({ type: "edited", params });
+    emitLog({
+      level: originsMatch ? "info" : "warn",
+      message:
+        `Applied .ifcgref.json from "${sidecar.source.filename}" ` +
+        `(EPSG:${sidecar.projectedCrs.epsg}, exported ${sidecar.exportedAt})` +
+        (originsMatch
+          ? ""
+          : " — source localOrigin differs from this file; verify placement"),
+    });
+  }
+
   return (
     <div className="flex min-h-0 flex-1">
       <Sidebar
@@ -239,7 +336,12 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           />
         }
       >
-        <SourceCard filename={filename} metadata={metadata} />
+        <SourceCard
+          filename={filename}
+          metadata={metadata}
+          siteOutsideBbox={references.siteOutsideBbox}
+          activeCrsCode={activeCrs?.code ?? null}
+        />
 
         <TargetCrsCard
           epsgCode={epsgCode}
@@ -251,6 +353,9 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           verticalDatum={verticalDatum}
           onVerticalDatumChange={setVerticalDatum}
           verticalDatumFromFile={metadata.verticalDatumHint !== null}
+          onApplySidecar={(file) => {
+            void handleApplySidecar(file);
+          }}
         />
 
         <Tabs defaultSelectedKey="reference" className="space-y-2">
@@ -291,6 +396,9 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                             ? "Pick disabled: precision grid for this CRS isn't loaded — clicking would record a ~170 m–wrong survey point. Retry from the CRS card."
                             : null
                     }
+                    canDownloadSidecar={
+                      effectiveHelmertParameters !== null && activeCrs !== null
+                    }
                     onEdit={(params) => {
                       dispatchAnchor({ type: "edited", params });
                     }}
@@ -299,6 +407,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                     onResetToFile={() => {
                       dispatchAnchor({ type: "resetToFile" });
                     }}
+                    onDownloadSidecar={handleDownloadSidecar}
                   />
                 </div>
               </Activity>
@@ -325,8 +434,9 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
 
         <RotationCard
           parameters={effectiveHelmertParameters}
+          provenance={effectiveAnchorProvenance}
           onParametersChange={(params: HelmertParams) => {
-            dispatchAnchor({ type: "paramsReplaced", params });
+            dispatchAnchor({ type: "edited", params });
           }}
           metadata={metadata}
         />
@@ -334,9 +444,9 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
 
       <section className="min-w-0 flex-1">
         <MapView
-          metadata={metadata}
           parameters={effectiveHelmertParameters}
           activeCrs={activeCrs}
+          references={references}
           isPickingAnchor={isPickingAnchor}
           onAnchorPicked={handleAnchorPicked}
           onCancelPickAnchor={cancelPickAnchor}
@@ -345,4 +455,21 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
       </section>
     </div>
   );
+}
+
+function sidecarErrorMessage(error: SidecarError): string {
+  switch (error.kind) {
+    case "invalid-json": {
+      return "Sidecar file isn't valid JSON.";
+    }
+    case "wrong-app": {
+      return `Sidecar was written by "${error.got}", not ifcgref — refusing to apply.`;
+    }
+    case "unsupported-version": {
+      return `Sidecar formatVersion ${String(error.got)} isn't supported by this build of ifcgref.`;
+    }
+    case "schema-mismatch": {
+      return "Sidecar JSON shape doesn't match the expected schema.";
+    }
+  }
 }
