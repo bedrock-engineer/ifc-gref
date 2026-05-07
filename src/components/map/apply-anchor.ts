@@ -2,7 +2,8 @@ import type { Map as MlMap } from "maplibre-gl";
 import { projectLocalToWgs84, type CrsDef } from "#modules/crs";
 import type { HelmertParams, XYZ } from "#modules/helmert/solve";
 import { emitLog } from "../../lib/log";
-import type { ThreeDLayer } from "../three-d-layer";
+import type { ThreeDLayer } from "./layers/three-d-layer";
+
 
 /**
  * Project the mesh centroid through the Helmert transform + proj4 to get the
