@@ -9,7 +9,7 @@ import {
   TextArea,
   TextField,
 } from "react-aria-components";
-import { Button } from "../button";
+import { Button } from "../input/button";
 import {
   parseSurveyPointPaste,
   type ParsedPointRow,

@@ -2,7 +2,7 @@
  * Flat registry consumed by `style.ts`, `LayersPanel`, and
  * `useMapLayers`. The order of `BASEMAPS` sets the default (first entry
  * is visible at startup). Reorder or push onto these arrays to add new
- * countries / providers — no edits elsewhere.
+ * countries / providers
  */
 
 import { MAPTERHORN_SOURCE_ID, MAPTERHORN_TERRAIN, OSM } from "./global";

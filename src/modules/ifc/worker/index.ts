@@ -12,6 +12,7 @@ export {
   type MapConversionStatus,
   type RawMapConversion,
   type RawProjectedCrs,
+  type RawRigidOperation,
   type SiteReferenceSync,
   writeMapConversion,
 } from "./georef";

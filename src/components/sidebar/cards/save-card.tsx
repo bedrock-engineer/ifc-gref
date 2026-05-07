@@ -1,4 +1,4 @@
-import { Button } from "../../button";
+import { Button } from "../../input/button";
 
 interface SaveCardProps {
   busy: boolean;
@@ -26,7 +26,7 @@ export function SaveCard({
   onWrite,
 }: SaveCardProps) {
   return (
-    <div className="space-y-2 border-t border-slate-200 bg-white p-4">
+    <div className="border-t border-gray-300 bg-white p-4">
       {blockedReason && (
         <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
           {blockedReason}

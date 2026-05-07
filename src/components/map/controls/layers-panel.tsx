@@ -11,8 +11,8 @@ import {
   Text,
   TextField,
 } from "react-aria-components";
-import { Button } from "../../button";
-import { RadioButton } from "../../radio-button";
+import { Button } from "../../input/button";
+import { RadioButton } from "../../input/radio-button";
 import {
   type CustomBasemap,
   describeCustomBasemapUrlError,
@@ -74,7 +74,7 @@ export function LayersPanel({
   onRemoveCustomBasemap,
 }: LayersPanelProps) {
   return (
-    <div className="min-w-[140px] space-y-1.5 rounded bg-white p-2.5 text-xs text-slate-900 shadow-[0_0_0_2px_rgba(0,0,0,0.1)]">
+    <div className="min-w-35 space-y-1.5 rounded bg-white p-2.5 text-xs text-slate-900 shadow-[0_0_0_2px_rgba(0,0,0,0.1)]">
       <RadioGroup
         value={basemap}
         onChange={onBasemapChange}

@@ -7,7 +7,7 @@ import {
   type OverrideError,
 } from "#modules/crs/types";
 import { retryCrsOverride } from "#modules/crs/manifest";
-import { Button } from "../../button";
+import { Button } from "../../input/button";
 import { Card } from "../card";
 import { ProvenanceBadge, type Provenance } from "../provenance-badge";
 import { CrsField } from "./target-crs-card/crs-field";

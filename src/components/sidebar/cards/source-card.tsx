@@ -4,6 +4,7 @@ import type { IfcMetadata } from "#modules/ifc/worker";
 import { Card } from "../card";
 import { MapConversionSection } from "./source-card/map-conversion-section";
 import { ProjectedCrsSection } from "./source-card/projected-crs-section";
+import { RigidOperationSection } from "./source-card/rigid-operation-section";
 import { Row } from "./source-card/row";
 
 interface SourceCardProps {
@@ -67,6 +68,7 @@ export function SourceCard({
           raw={metadata.rawMapConversion}
           status={metadata.mapConversionStatus}
         />
+        <RigidOperationSection raw={metadata.rawRigidOperation} />
       </div>
     </Card>
   );

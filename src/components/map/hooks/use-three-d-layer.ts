@@ -1,13 +1,14 @@
 import { type Map as MlMap } from "maplibre-gl";
 import { type RefObject, useEffect, useRef } from "react";
-import { getIfc } from "../../../ifc-api";
+
+import { emitLog } from "#lib/log";
 import type { CrsDef } from "#modules/crs";
 import type { HelmertParams } from "#modules/helmert/solve";
 import type { IfcFacade } from "#modules/ifc/facade";
-import { emitLog } from "../../../lib/log";
-import type { ThreeDLayer } from "../../three-d-layer";
+import { getIfc } from "../../../ifc-api";
 import { applyAnchor } from "../apply-anchor";
 import type { ViewMode } from "../controls/view-toggle";
+import type { ThreeDLayer } from "../layers/three-d-layer";
 
 interface ThreeDState {
   view: ViewMode;
@@ -57,6 +58,7 @@ export function useThreeDLayer(
     }
 
     let cancelled = false;
+
     setup(map, {
       parameters,
       activeCrs,
@@ -82,18 +84,18 @@ function teardown(
   threeDRef: RefObject<ThreeDLayer | null>,
   meshOriginRef: RefObject<MeshOrigin | null>,
 ): void {
-  // Effect re-runs on every `parameters` change. When already in 2D with no
-  // 3D layer to dispose, this teardown is a no-op — bail before the easeTo
-  // so it doesn't clobber a fitBounds animation kicked off by another effect
-  // in the same render.
   const threeD = threeDRef.current;
+
   if (!threeD) {
     return;
   }
+
   map.easeTo({ pitch: 0, bearing: 0, duration: 300 });
+
   if (map.getLayer(threeD.layer.id)) {
     map.removeLayer(threeD.layer.id);
   }
+
   threeD.dispose();
   threeDRef.current = null;
   meshOriginRef.current = null;
@@ -110,8 +112,8 @@ async function setup(
     isCancelled: () => boolean;
   },
 ): Promise<void> {
-  // Lazy-load three.js + our threeDLayer module. Vite code-splits this.
-  const { createThreeDLayer } = await import("../../three-d-layer");
+  // Lazy-load three.js + our threeDLayer module.
+  const { createThreeDLayer } = await import("../layers/three-d-layer");
   if (context.isCancelled()) {
     return;
   }
@@ -120,7 +122,9 @@ async function setup(
   const cached = context.meshCacheRef.current;
   const promise = cached ?? getIfc().extractMeshes();
   context.meshCacheRef.current = promise;
+
   const meshes = await promise;
+
   if (context.isCancelled()) {
     return;
   }
@@ -128,14 +132,17 @@ async function setup(
   // Create the layer once per 3D session; param changes only re-anchor.
   if (!context.threeDRef.current) {
     const layer = createThreeDLayer();
+    
     context.threeDRef.current = layer;
     context.meshOriginRef.current = layer.setMeshes(meshes);
+
     if (!map.getLayer(layer.layer.id)) {
       map.addLayer(layer.layer);
     }
   }
 
   const meshOrigin = context.meshOriginRef.current;
+
   if (!meshOrigin) {
     emitLog({
       level: "warn",
@@ -143,6 +150,7 @@ async function setup(
     });
     return;
   }
+
   applyAnchor(
     context.threeDRef.current,
     context.parameters,

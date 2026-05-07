@@ -5,13 +5,15 @@ import {
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
-import { Button } from "./button";
+import { Button } from "./input/button";
 import {
   clearLog,
   getLogEntries,
   subscribeLog,
   type LogEntry,
 } from "../lib/log";
+
+const style = { gridArea: "diagnostics" };
 
 const LEVEL_CLASSES: Record<LogEntry["level"], string> = {
   info: "text-slate-700",
@@ -23,14 +25,17 @@ export function DiagnosticsPanel() {
   const entries = useSyncExternalStore(subscribeLog, getLogEntries);
 
   return (
-    <Disclosure className="shrink-0 border-t border-slate-200 bg-slate-50 text-xs">
+    <Disclosure style={style} className="border-t border-slate-200 bg-slate-50 text-xs">
       <Heading className="m-0">
         <AriaButton
           slot="trigger"
           className="flex w-full items-center justify-between px-3 py-1.5 text-left font-medium text-slate-700 outline-none hover:bg-slate-100 focus-visible:bg-slate-100"
         >
           <span>Diagnostics ({entries.length})</span>
-          <span aria-hidden className="text-slate-400 group-aria-expanded:rotate-180">
+          <span
+            aria-hidden
+            className="text-slate-400 group-aria-expanded:rotate-180"
+          >
             ▾
           </span>
         </AriaButton>
@@ -75,7 +80,7 @@ function LogRow({ entry }: LogRowProps) {
   const time = new Date(entry.timestamp).toLocaleTimeString([], {
     hour12: false,
   });
-  
+
   return (
     <li className={LEVEL_CLASSES[entry.level]}>
       <span className="text-slate-400">{time}</span>{" "}

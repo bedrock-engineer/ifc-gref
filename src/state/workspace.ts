@@ -4,7 +4,14 @@
  * workspace.tsx is left with state + JSX wiring.
  */
 
-import { ResultAsync, err, errAsync, ok, okAsync, type Result } from "neverthrow";
+import {
+  ResultAsync,
+  err,
+  errAsync,
+  ok,
+  okAsync,
+  type Result,
+} from "neverthrow";
 import {
   type CrsDef,
   type CrsError,
@@ -15,10 +22,12 @@ import {
   transformWgs84ToProjected,
 } from "#modules/crs";
 import {
+  solveSinglePointFallback,
   type HelmertParams,
   type PointPair,
   type SolveRequest,
   type SurveySource,
+  type XYZ,
 } from "#modules/helmert/solve";
 import type { ExistingGeoref, IfcMetadata } from "#modules/ifc/worker";
 
@@ -40,16 +49,31 @@ export type Provenance =
  * from, so the two can never drift apart. The kind strings line up with
  * `Provenance` on purpose — a manual/map/survey/file anchor maps 1:1 to
  * the badge shown in the sidebar.
+ *
+ * `survey.points` is the point list that produced `params` — kept on the
+ * anchor so the residuals chart can render iff the live params still
+ * descend from a least-squares fit. `edited` / `picked` / `resetToFile`
+ * naturally drop it; `paramsReplaced` (CRS swap) drops it too because
+ * the points were captured in the previous CRS's frame.
+ *
+ * Single-point fallback solves leave `points` undefined — there are no
+ * residuals to chart with one constraint.
  */
 export type Anchor =
   | { kind: "default" }
   | { kind: "file"; params: HelmertParams }
   | { kind: "manual"; params: HelmertParams }
   | { kind: "map"; params: HelmertParams }
-  | { kind: "survey"; params: HelmertParams };
+  | { kind: "survey"; params: HelmertParams; points?: Array<PointPair> };
 
 export function anchorParams(anchor: Anchor): HelmertParams | null {
   return anchor.kind === "default" ? null : anchor.params;
+}
+
+/** Survey-fit residuals points iff the live anchor still descends from
+ *  a multi-point fit (drops on edit/pick/reset/CRS-swap). */
+export function anchorSurveyPoints(anchor: Anchor): Array<PointPair> | null {
+  return anchor.kind === "survey" && anchor.points ? anchor.points : null;
 }
 
 /**
@@ -82,7 +106,7 @@ export type AnchorAction =
   | { type: "edited"; params: HelmertParams }
   | { type: "resetToFile" }
   | { type: "picked"; params: HelmertParams }
-  | { type: "solved"; params: HelmertParams }
+  | { type: "solved"; params: HelmertParams; points?: Array<PointPair> }
   | { type: "paramsReplaced"; params: HelmertParams };
 
 export function initialAnchor(metadata: IfcMetadata): Anchor {
@@ -114,11 +138,20 @@ export function makeAnchorReducer(existing: ExistingGeoref | null) {
         return { kind: "map", params: action.params };
       }
       case "solved": {
-        return { kind: "survey", params: action.params };
+        return action.points
+          ? { kind: "survey", params: action.params, points: action.points }
+          : { kind: "survey", params: action.params };
       }
       case "paramsReplaced": {
         if (state.kind === "default") {
           return state;
+        }
+        // CRS swap: the survey points are tied to the previous CRS's
+        // frame, so the residuals would be wrong against the reprojected
+        // params. Keep the badge, drop the points; user re-solves to
+        // restore the chart in the new CRS.
+        if (state.kind === "survey") {
+          return { kind: "survey", params: action.params };
         }
         return { ...state, params: action.params };
       }
@@ -222,6 +255,30 @@ export function reprojectAnchorOnCrsChange(arguments_: {
     });
 }
 
+/**
+ * Project the IfcSite RefLatitude/RefLongitude/RefElevation through the
+ * active CRS. Single point of truth shared by the solver feed
+ * (`buildSurveySource`), the file-load seed (`deriveSeededParameters`),
+ * and the locked anchor row in the survey-points card. Returns `null`
+ * when the file has no IfcSite reference; `Result` distinguishes the
+ * present-but-projection-failed case so callers can branch.
+ */
+export function projectIfcSite(
+  metadata: IfcMetadata,
+  activeCrs: CrsDef,
+): Result<XYZ, TransformError> | null {
+  const site = metadata.siteReference;
+  if (!site) {
+    return null;
+  }
+  return transformWgs84ToProjected({
+    def: activeCrs,
+    longitude: site.longitude,
+    latitude: site.latitude,
+    elevation: site.elevation,
+  });
+}
+
 export type SurveySourceError =
   | { kind: "no-site-ref"; message: string }
   | { kind: "projection-failed"; message: string };
@@ -240,18 +297,13 @@ export function buildSurveySource(arguments_: {
   if (request.mode === "ignore-existing") {
     return ok({ kind: "ignore-existing", userPoints: request.userPoints });
   }
-  if (!metadata.siteReference || !metadata.localOrigin) {
+  const projected = projectIfcSite(metadata, activeCrs);
+  if (projected === null || !metadata.localOrigin) {
     return err({
       kind: "no-site-ref",
       message: "No IfcSite reference available for this mode",
     });
   }
-  const projected = transformWgs84ToProjected({
-    def: activeCrs,
-    longitude: metadata.siteReference.longitude,
-    latitude: metadata.siteReference.latitude,
-    elevation: metadata.siteReference.elevation,
-  });
   if (projected.isErr()) {
     return err({
       kind: "projection-failed",
@@ -300,13 +352,15 @@ export function applyPickedAnchor(arguments_: {
       northing: projected.value.y,
     });
   }
-  return ok({
-    xScale: 1,
-    yScale: 1,
-    zScale: 1,
-    rotation: trueNorthRotation(metadata.trueNorth),
-    easting: projected.value.x,
-    northing: projected.value.y,
-    height: 0,
-  });
+  // Convention: a map click describes the location of the IFC project's
+  // spatial root (local (0,0,0)) — same convention as the IfcSite seed.
+  // Elevation is 0 because the picker doesn't sample terrain (Mapterhorn's
+  // vertical datum varies by region); user enters OrthogonalHeight in the
+  // anchor card.
+  return ok(
+    solveSinglePointFallback(
+      { local: { x: 0, y: 0, z: 0 }, target: { ...projected.value, z: 0 } },
+      { trueNorthRotation: trueNorthRotation(metadata.trueNorth) },
+    ),
+  );
 }

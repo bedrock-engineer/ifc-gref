@@ -7,8 +7,7 @@ import {
   useState,
 } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
-import { type HelmertParams } from "#modules/helmert/solve";
-import { emitLog } from "../lib/log";
+
 import {
   buildSidecar,
   localOriginsEqual,
@@ -16,28 +15,26 @@ import {
   sidecarFilenameFor,
   sidecarToParams,
   type SidecarError,
-} from "../lib/ifcgref-sidecar";
-import {
-  anchorParams,
-  initialAnchor,
-  makeAnchorReducer,
-} from "#state/workspace";
-import {
-  deriveGeorefView,
-  deriveMapReferences,
-  deriveOverlaySignals,
-} from "#state/georef-status/findings";
-import {
-  findingKey,
-  type MapOverlaySignals,
-} from "#state/georef-status/types";
+} from "#lib/ifcgref-sidecar";
+import { emitLog } from "#lib/log";
+import { type HelmertParams } from "#modules/helmert/solve";
+import type { IfcMetadata } from "#modules/ifc/worker";
+import { deriveGeorefView } from "#state/georef-status/derive-view";
 import {
   derivePickBlockedReason,
   deriveSaveBlockedReason,
   findingToLogMessage,
 } from "#state/georef-status/format";
-import type { IfcMetadata } from "#modules/ifc/worker";
-import { MapView, type MapViewHandle } from "./map-view";
+import { deriveOverlaySignals } from "#state/georef-status/overlay-signals";
+import { deriveMapReferences } from "#state/georef-status/references";
+import { findingKey, type MapOverlaySignals } from "#state/georef-status/types";
+import {
+  anchorParams,
+  anchorSurveyPoints,
+  initialAnchor,
+  makeAnchorReducer,
+} from "#state/workspace";
+import { MapView, type MapViewHandle } from "./map/map-view";
 import { AnchorCard } from "./sidebar/cards/anchor-card";
 import { RotationCard } from "./sidebar/cards/rotation-card";
 import { SaveCard } from "./sidebar/cards/save-card";
@@ -45,11 +42,13 @@ import { SourceCard } from "./sidebar/cards/source-card";
 import { SurveyPointsCard } from "./sidebar/cards/survey-points-card";
 import { TargetCrsCard } from "./sidebar/cards/target-crs-card";
 import { Sidebar } from "./sidebar/sidebar";
+import { createHelmertSolver } from "./workspace/helmert-solve";
 import { useAnchorPick } from "./workspace/use-anchor-pick";
 import { useExtractedFootprint } from "./workspace/use-extracted-footprint";
-import { useHelmertSolve } from "./workspace/use-helmert-solve";
 import { useIfcWrite } from "./workspace/use-ifc-write";
 import { useTargetCrs } from "./workspace/use-target-crs";
+
+const mapContainerStyle = { gridArea: "map" };
 
 export interface WorkspaceProps {
   filename: string;
@@ -182,15 +181,20 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     [overlaySignals, effectiveParameters],
   );
 
-  const { solve, lastFitPoints } = useHelmertSolve({
+  const solve = createHelmertSolver({
     metadata,
     activeCrs,
-    onSolved: (params) => {
-      dispatchAnchor({ type: "solved", params });
+    onSolved: ({ params, points }) => {
+      dispatchAnchor({ type: "solved", params, points });
       frameNow(nextSignalsAfter(params));
     },
     onError: reportError,
   });
+
+  // Residuals points live on `anchor.survey.points` so they stay in
+  // lockstep with provenance — editing/picking/resetting/CRS-swapping
+  // the anchor drops the points and the chart disappears.
+  const lastFitPoints = anchorSurveyPoints(anchor);
 
   const { busy, write } = useIfcWrite({
     filename,
@@ -285,12 +289,14 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <>
       <Sidebar
         saveCard={
           <SaveCard
             busy={busy}
-            canWrite={effectiveParameters !== null && saveBlockedReason === null}
+            canWrite={
+              effectiveParameters !== null && saveBlockedReason === null
+            }
             blockedReason={saveBlockedReason}
             onWrite={write}
           />
@@ -398,7 +404,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
         />
       </Sidebar>
 
-      <section className="min-w-0 flex-1">
+      <section style={mapContainerStyle}>
         <MapView
           ref={mapViewRef}
           parameters={effectiveParameters}
@@ -410,7 +416,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           residualsPoints={lastFitPoints}
         />
       </section>
-    </div>
+    </>
   );
 }
 

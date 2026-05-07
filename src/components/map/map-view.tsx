@@ -1,3 +1,4 @@
+import "maplibre-gl/dist/maplibre-gl.css";
 import {
   useImperativeHandle,
   useMemo,
@@ -7,39 +8,36 @@ import {
   type Ref,
   type SetStateAction,
 } from "react";
-import { useStickyState } from "../hooks/use-sticky-state";
 import { createPortal } from "react-dom";
-import "maplibre-gl/dist/maplibre-gl.css";
+
 import { type CrsDef } from "#modules/crs";
-import type { MapOverlaySignals } from "#state/georef-status/types";
 import type { HelmertParams, PointPair } from "#modules/helmert/solve";
-import { LayersPanel } from "./map/controls/layers-panel";
-import { SearchBox } from "./map/controls/search-box";
-import { ViewToggle, type ViewMode } from "./map/controls/view-toggle";
-import { ZoomToModel } from "./map/controls/zoom-to-model";
+import type { MapOverlaySignals } from "#state/georef-status/types";
+import { useStickyState } from "../../hooks/use-sticky-state";
+import { LayersPanel } from "./controls/layers-panel";
+import { SearchBox } from "./controls/search-box";
+import { useMapScope } from "./controls/use-scope";
+import { ViewToggle, type ViewMode } from "./controls/view-toggle";
+import { ZoomToModel } from "./controls/zoom-to-model";
+import { useAnchorPicker, type PickedAnchor } from "./hooks/use-anchor-picker";
+import { computeAxesGeometry, useAxesLayer } from "./hooks/use-axes-layer";
+import { useCrsAutoZoom } from "./hooks/use-crs-auto-zoom";
+import { useMapInit } from "./hooks/use-map-init";
+import { useMapLayers } from "./hooks/use-map-layers";
+import { frameCamera, useMapOverlays } from "./hooks/use-map-overlays";
+import { useResidualsLayer } from "./hooks/use-residuals-layer";
+import { useThreeDLayer } from "./hooks/use-three-d-layer";
 import {
-  useAnchorPicker,
-  type PickedAnchor,
-} from "./map/hooks/use-anchor-picker";
-import { computeAxesGeometry, useAxesLayer } from "./map/hooks/use-axes-layer";
-import { useCrsAutoZoom } from "./map/hooks/use-crs-auto-zoom";
-import { frameCamera, useMapOverlays } from "./map/hooks/use-map-overlays";
-import { useMapInit } from "./map/hooks/use-map-init";
-import { useMapLayers } from "./map/hooks/use-map-layers";
-import { useResidualsLayer } from "./map/hooks/use-residuals-layer";
-import { useThreeDLayer } from "./map/hooks/use-three-d-layer";
-import {
-  type CustomBasemap,
-  CustomBasemapsSchema,
   CUSTOM_BASEMAPS_STORAGE_KEY,
-} from "./map/layers/custom-basemap";
+  CustomBasemapsSchema,
+  type CustomBasemap,
+} from "./layers/custom-basemap";
 import {
   DEFAULT_BASEMAP_ID,
   INITIAL_OVERLAYS,
   type BasemapId,
   type OverlayId,
-} from "./map/layers/registry";
-import { useMapScope } from "./map/controls/use-scope";
+} from "./layers/registry";
 
 function deriveThreeDDisabled(
   parameters: HelmertParams | null,

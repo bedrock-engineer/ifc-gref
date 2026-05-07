@@ -28,6 +28,25 @@ export interface RawProjectedCrs {
 }
 
 /**
+ * Verbatim-from-file IfcRigidOperation fields. IFC 4.3-only entity that's a
+ * sibling of IfcMapConversion under IfcCoordinateOperation — translation
+ * only, no rotation, no scale. Surfaced read-only for the source card; the
+ * active georef workflow keeps using IfcMapConversion.
+ *
+ * Coordinates are on-disk values (the IfcLengthMeasure literal), not
+ * boundary-converted to metres — same convention as RawMapConversion. The
+ * MapUnit on the linked IfcProjectedCRS tells the user what they're in.
+ */
+export interface RawRigidOperation {
+  firstCoordinate: number;
+  secondCoordinate: number;
+  /** Optional per IFC 4.3 spec — unset means a 2D rigid operation. */
+  height: number | null;
+  /** Name of the linked TargetCRS (IfcProjectedCRS / IfcGeographicCRS), if any. */
+  targetCrsName: string | null;
+}
+
+/**
  * Verbatim-from-file IfcMapConversion values *before* the read-side unit
  * conversions in `buildHelmertFromFields`. Surfaced for the source-side UI
  * so a BIM professional can see exactly what's on disk without re-opening
@@ -89,6 +108,13 @@ export interface GeorefRead {
   /** Verbatim-from-file IfcMapConversion / ePset_MapConversion fields. */
   rawMapConversion: RawMapConversion | null;
   mapConversionStatus: MapConversionStatus;
+  /**
+   * Verbatim-from-file IfcRigidOperation fields. Always null on IFC2X3
+   * (entity didn't exist) and on IFC4 / IFC4X1 / IFC4X2 (entity is 4.3+
+   * only). Multiple IfcRigidOperation entities are rare in practice; we
+   * surface the first one read.
+   */
+  rawRigidOperation: RawRigidOperation | null;
 }
 
 /**
@@ -132,6 +158,7 @@ export function classifyGeorefRead(input: {
       rawProjectedCrs,
       rawMapConversion,
       mapConversionStatus: "placeholder",
+      rawRigidOperation: null,
     };
   }
   return {
@@ -141,6 +168,7 @@ export function classifyGeorefRead(input: {
     rawProjectedCrs,
     rawMapConversion,
     mapConversionStatus: "real",
+    rawRigidOperation: null,
   };
 }
 
@@ -159,5 +187,6 @@ export function absentGeorefRead(
     rawProjectedCrs,
     rawMapConversion: null,
     mapConversionStatus: "absent",
+    rawRigidOperation: null,
   };
 }

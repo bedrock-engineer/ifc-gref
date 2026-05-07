@@ -1,4 +1,4 @@
-import { type CrsDef, transformWgs84ToProjected } from "#modules/crs";
+import { type CrsDef } from "#modules/crs";
 import type {
   HelmertParams,
   PointPair,
@@ -7,12 +7,12 @@ import type {
 } from "#modules/helmert/solve";
 import type { ParsedPointRow } from "#modules/helmert/survey-point-paste";
 import type { IfcMetadata } from "#modules/ifc/worker";
-import { unitToMetres } from "#modules/units/convert";
 import { describeCrsUnit, describeIfcUnit } from "#modules/units/format";
+import { projectIfcSite } from "#state/workspace";
 import { type ReactNode, useReducer, useState } from "react";
 import { Button as AriaButton, Label, RadioGroup } from "react-aria-components";
-import { Button } from "../../button";
-import { RadioButton } from "../../radio-button";
+import { Button } from "../../input/button";
+import { RadioButton } from "../../input/radio-button";
 import { NumberField } from "../number-field";
 import { PasteSurveyPointsButton } from "../paste-survey-points-button";
 import { ResidualsTable } from "../residuals-table";
@@ -396,9 +396,9 @@ function PointPairAxesGrid({
             onChange={(v) => onProjected?.(axis, v)}
           />
         ))
-      ) : (projectedFallback ? (
+      ) : projectedFallback ? (
         <div className="col-span-3">{projectedFallback}</div>
-      ) : null)}
+      ) : null}
     </div>
   );
 }
@@ -430,32 +430,25 @@ function IfcSiteAnchorMiniCard({
   }
 
   // localOrigin is metres (worker boundary 1) — divide back out so the
-  // displayed numbers carry the unit in the shared header above.
-  const ifcMetresPerUnit = unitToMetres(metadata.lengthUnit).unwrapOr(1);
+  // displayed numbers carry the unit in the shared header above. The
+  // factor was resolved once by the worker (1 if unit unknown).
+  const ifcMetresPerUnit = metadata.metresPerUnit;
   const localX = origin.x / ifcMetresPerUnit;
   const localY = origin.y / ifcMetresPerUnit;
   const localZ = origin.z / ifcMetresPerUnit;
 
-  const projected = activeCrs
-    ? transformWgs84ToProjected({
-        def: activeCrs,
-        longitude: site.longitude,
-        latitude: site.latitude,
-        elevation: site.elevation,
-      })
-    : null;
-  // transformWgs84ToProjected returns metres (proj4 boundary). Divide by
-  // metresPerUnit to land in CRS-native units (matches the projected
-  // column unit in the header).
+  const projected = activeCrs ? projectIfcSite(metadata, activeCrs) : null;
+  // projectIfcSite returns metres (proj4 boundary). Divide by metresPerUnit
+  // to land in CRS-native units (matches the projected column unit in the
+  // header).
   const crsMetresPerUnit = activeCrs?.metresPerUnit ?? 1;
-  const projectedNative: AxesValues | null =
-    projected && projected.isOk()
-      ? {
-          x: projected.value.x / crsMetresPerUnit,
-          y: projected.value.y / crsMetresPerUnit,
-          z: projected.value.z / crsMetresPerUnit,
-        }
-      : null;
+  const projectedNative: AxesValues | null = projected?.isOk()
+    ? {
+        x: projected.value.x / crsMetresPerUnit,
+        y: projected.value.y / crsMetresPerUnit,
+        z: projected.value.z / crsMetresPerUnit,
+      }
+    : null;
 
   return (
     <div className="space-y-1.5 rounded border border-slate-200 bg-slate-50 p-2.5">
@@ -510,6 +503,7 @@ const ENGINEERING_KEYS: Record<Axis, keyof PointDraft> = {
   y: "localY",
   z: "localZ",
 };
+
 const PROJECTED_KEYS: Record<Axis, keyof PointDraft> = {
   x: "targetX",
   y: "targetY",
@@ -541,6 +535,7 @@ function PointMiniCard({
         <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
           Point {index + 1}
         </span>
+
         {canRemove && (
           <AriaButton
             onPress={onRemove}
@@ -551,6 +546,7 @@ function PointMiniCard({
           </AriaButton>
         )}
       </div>
+
       <PointPairAxesGrid
         ariaPrefix={`Point ${index + 1}`}
         engineering={{ x: point.localX, y: point.localY, z: point.localZ }}

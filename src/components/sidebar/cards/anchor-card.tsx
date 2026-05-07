@@ -3,7 +3,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from "react-aria-components";
-import { Button } from "../../button";
+import { Button } from "../../input/button";
 import type { HelmertParams } from "#modules/helmert/solve";
 import { NumberField } from "../number-field";
 import { ProvenanceBadge, type Provenance } from "../provenance-badge";

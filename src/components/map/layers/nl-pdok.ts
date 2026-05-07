@@ -112,7 +112,8 @@ export const BAG_3D: OverlayDef = {
   kind: "custom",
   region: "nl",
   load: async () => {
-    const { createThreeDBagLayer } = await import("../../three-d-bag-layer");
+    const { createThreeDBagLayer } = await import("./three-d-bag-layer");
+
     return { create: () => createThreeDBagLayer() };
   },
 };

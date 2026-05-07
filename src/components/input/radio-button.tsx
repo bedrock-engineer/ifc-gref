@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import { Radio, type RadioProps } from "react-aria-components";
 
+
+const BASE =
+  "group cursor-pointer outline-none data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-disabled:cursor-not-allowed data-disabled:opacity-50";
+
+const INDICATOR =
+  "flex size-3 shrink-0 items-center justify-center rounded-full border border-slate-400 group-data-selected:border-slate-900";
+  
 interface RadioButtonProps extends Omit<RadioProps, "children" | "className"> {
   /** Outer container classes — layout, spacing, and selected-state chrome. */
   className?: string;
@@ -9,11 +16,6 @@ interface RadioButtonProps extends Omit<RadioProps, "children" | "className"> {
   children: ReactNode;
 }
 
-const BASE =
-  "group cursor-pointer outline-none data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-disabled:cursor-not-allowed data-disabled:opacity-50";
-
-const INDICATOR =
-  "flex size-3 shrink-0 items-center justify-center rounded-full border border-slate-400 group-data-selected:border-slate-900";
 
 export function RadioButton({
   className,

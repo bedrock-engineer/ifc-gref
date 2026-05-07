@@ -7,7 +7,7 @@ import { getIfc } from "./ifc-api";
 import { formatBytes } from "./lib/format";
 import { emitLog } from "./lib/log";
 import type { IfcMetadata } from "#modules/ifc/worker";
-import { computeFileFindings } from "#state/georef-status/findings";
+import { detectBakedProjectedOrigin } from "#state/georef-status/derive-view";
 import { findingToLogMessage } from "#state/georef-status/format";
 
 export type Stage =
@@ -73,11 +73,15 @@ export default function App() {
         emitLog({ message: "No existing georeferencing found" });
       }
 
-      for (const finding of computeFileFindings(metadata)) {
-        if (finding.kind === "unknown-length-unit") {
-          continue;
-        }
-        emitLog({ level: "warn", message: findingToLogMessage(finding) });
+      const bakedOrigin = detectBakedProjectedOrigin(metadata);
+      if (bakedOrigin) {
+        emitLog({
+          level: "warn",
+          message: findingToLogMessage({
+            kind: "baked-projected-origin",
+            origin: bakedOrigin,
+          }),
+        });
       }
 
       setStage({ kind: "loaded", filename: file.name, metadata });
@@ -89,13 +93,14 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-50">
+    <div className="main-grid overflow-hidden bg-slate-50">
       <Header
         filename={stage.kind === "loaded" ? stage.filename : null}
         onFile={(file) => {
           void handleFile(file);
         }}
       />
+
       {stage.kind === "loaded" ? (
         <Workspace
           key={stage.filename}
@@ -117,6 +122,7 @@ export default function App() {
           }}
         />
       )}
+      
       <DiagnosticsPanel />
     </div>
   );

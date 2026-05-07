@@ -24,6 +24,7 @@ export type {
   MapConversionStatus,
   RawMapConversion,
   RawProjectedCrs,
+  RawRigidOperation,
   SiteReferenceSync,
 } from "./shared";
 

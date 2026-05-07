@@ -20,6 +20,7 @@ import {
   type MapConversionStatus,
   type RawMapConversion,
   type RawProjectedCrs,
+  type RawRigidOperation,
   readExistingGeoref,
 } from "./georef";
 import { type IfcSchema, parseSchema } from "./schema";
@@ -37,6 +38,14 @@ export interface IfcMetadata {
   localOrigin: XYZ | null;
   /** Length unit name from IfcUnitAssignment, e.g. "METRE", "MILLIMETRE" */
   lengthUnit: string;
+  /**
+   * Resolved metres-per-IFC-unit factor — the canonical conversion ratio
+   * computed once at the worker boundary so render-side code (survey card
+   * display, solver entry) doesn't re-look it up. Falls back to 1 for
+   * unknown units; the worker emits a `warn` log in that case so the user
+   * sees that downstream values are unconvertible.
+   */
+  metresPerUnit: number;
   /** TrueNorth direction (XAxisOrdinate, XAxisAbscissa) if present */
   trueNorth: { abscissa: number; ordinate: number } | null;
   /** Existing georeferencing if the file is already georeferenced */
@@ -50,6 +59,8 @@ export interface IfcMetadata {
   /** Verbatim-from-file IfcMapConversion / ePset_MapConversion fields. */
   rawMapConversion: RawMapConversion | null;
   mapConversionStatus: MapConversionStatus;
+  /** Verbatim-from-file IfcRigidOperation fields (IFC 4.3+ only). */
+  rawRigidOperation: RawRigidOperation | null;
 }
 
 /**
@@ -95,6 +106,7 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
     siteReference: readSiteReference(site, ifcMetresPerUnit),
     localOrigin: readLocalOrigin(site, ifcMetresPerUnit),
     lengthUnit,
+    metresPerUnit: ifcMetresPerUnit,
     trueNorth: readTrueNorth(ifcAPI, modelID, project),
     existingGeoref: georef.existingGeoref,
     targetCrsHint: georef.targetCrsHint,
@@ -102,6 +114,7 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
     rawProjectedCrs: georef.rawProjectedCrs,
     rawMapConversion: georef.rawMapConversion,
     mapConversionStatus: georef.mapConversionStatus,
+    rawRigidOperation: georef.rawRigidOperation,
   };
 
   emitLog({

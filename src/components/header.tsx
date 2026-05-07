@@ -1,5 +1,7 @@
 import { FileTrigger } from "react-aria-components";
-import { Button } from "./button";
+import { Button } from "./input/button";
+
+const style = { gridArea: "header" };
 
 interface HeaderProps {
   filename: string | null;
@@ -8,11 +10,15 @@ interface HeaderProps {
 
 export function Header({ filename, onFile }: HeaderProps) {
   return (
-    <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+    <header
+      style={style}
+      className=" flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3"
+    >
       <div>
         <h1 className="text-lg font-semibold text-slate-900">
           IFC Georeferencer
         </h1>
+
         {filename && <p className="text-xs text-slate-500">{filename}</p>}
       </div>
 
@@ -29,7 +35,6 @@ export function Header({ filename, onFile }: HeaderProps) {
           {filename ? "Load different IFC file" : "Load IFC file"}
         </Button>
       </FileTrigger>
-      
     </header>
   );
 }

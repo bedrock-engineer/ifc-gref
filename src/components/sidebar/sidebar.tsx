@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+const style = { gridArea: "sidebar" };
+
 interface SidebarProps {
   children: ReactNode;
   saveCard: ReactNode;
@@ -7,8 +9,12 @@ interface SidebarProps {
 
 export function Sidebar({ saveCard, children }: SidebarProps) {
   return (
-    <aside className="flex w-105 shrink-0 flex-col border-r border-slate-200 bg-slate-50">
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+    <aside
+      style={style}
+      className="flex flex-col overflow-hidden h-full border-r border-slate-200 bg-slate-50
+      "
+    >
+      <div className="space-y-3 min-h-0 flex-1 overflow-y-auto p-4 overscroll-contain">
         {children}
       </div>
 

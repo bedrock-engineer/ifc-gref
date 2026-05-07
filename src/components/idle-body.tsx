@@ -9,18 +9,23 @@ import {
 } from "react-aria-components";
 import type { Stage } from "../app";
 
+const DEMO_FILENAME = "MiniBIM-3.1-DO_01_VORM.ifc";
+const DEMO_URL = `${import.meta.env.BASE_URL}demo/${DEMO_FILENAME}`;
+
+const idleBodyStyle = { gridColumn: "sidebar / map" };
+
 export interface IdleBodyProps {
   stage: Exclude<Stage, { kind: "loaded" }>;
   onFile: (file: File) => void;
   onError: (message: string) => void;
 }
 
-const DEMO_FILENAME = "MiniBIM-3.1-DO_01_VORM.ifc";
-const DEMO_URL = `${import.meta.env.BASE_URL}demo/${DEMO_FILENAME}`;
-
 export function IdleBody({ stage, onFile, onError }: IdleBodyProps) {
   return (
-    <div className="flex flex-1 items-center justify-center p-8">
+    <div
+      style={idleBodyStyle}
+      className="flex flex-1 items-center justify-center p-8"
+    >
       <div className="w-full max-w-xl space-y-4">
         {stage.kind === "loading" ? (
           <LoadingIndicator status={stage.status} fraction={stage.fraction} />
@@ -43,13 +48,13 @@ export function IdleBody({ stage, onFile, onError }: IdleBodyProps) {
   );
 }
 
+function isIfcFilename(name: string): boolean {
+  return name.toLowerCase().endsWith(".ifc");
+}
+
 interface FileDropZoneProps {
   onFile: (file: File) => void;
   onError: (message: string) => void;
-}
-
-function isIfcFilename(name: string): boolean {
-  return name.toLowerCase().endsWith(".ifc");
 }
 
 function FileDropZone({ onFile, onError }: FileDropZoneProps) {

@@ -14,6 +14,7 @@ import {
   IFCMAPCONVERSIONSCALED,
   IFCPROJECTEDCRS,
   IFCREAL,
+  IFCRIGIDOPERATION,
   IFCSIUNIT,
 } from "web-ifc";
 import type { HelmertParams } from "#modules/helmert/solve";
@@ -29,6 +30,7 @@ import {
   classifyGeorefRead,
   type GeorefRead,
   type RawProjectedCrs,
+  type RawRigidOperation,
 } from "./shared";
 
 /**
@@ -40,6 +42,12 @@ export function readGeorefIfc4(
   modelID: number,
   ifcMetresPerUnit: number,
 ): GeorefRead {
+  // IfcRigidOperation is an IFC 4.3-only sibling of IfcMapConversion —
+  // GetLineIDsWithType returns 0 entries on pre-4.3 schemas, so this read
+  // is safe to attempt unconditionally. Read-only display; not wired into
+  // the active georef workflow.
+  const rawRigidOperation = readRigidOperationIfc4(ifcAPI, modelID);
+
   // `includeInherited: true` makes the query also return IfcMapConversionScaled
   // instances (an IFC 4.3 subtype that adds FactorX/Y/Z for non-isotropic
   // scaling). We dispatch on the entity's type tag below.
@@ -49,7 +57,7 @@ export function readGeorefIfc4(
     // still exist in the file (rare; the IFC4 model is supposed to
     // attach via MapConversion). We don't pursue it — without a
     // transform there's nothing to anchor it to.
-    return absentGeorefRead(null);
+    return { ...absentGeorefRead(null), rawRigidOperation };
   }
   const mc = ifcAPI.GetLine(modelID, ids.get(0), true);
   const target: any = mc.TargetCRS;
@@ -100,22 +108,57 @@ export function readGeorefIfc4(
     });
   }
 
-  return classifyGeorefRead({
-    helmert,
-    rawProjectedCrs,
-    rawMapConversion: {
-      eastings: onDiskE,
-      northings: onDiskN,
-      orthogonalHeight: onDiskH,
-      scale: onDiskScale,
-      xAxisAbscissa: onDiskXAbs,
-      xAxisOrdinate: onDiskXOrd,
-      factorX: isScaled ? factorX : null,
-      factorY: isScaled ? factorY : null,
-      factorZ: isScaled ? factorZ : null,
-    },
-    sourceLabel: isScaled ? "IfcMapConversionScaled" : "IfcMapConversion",
+  return {
+    ...classifyGeorefRead({
+      helmert,
+      rawProjectedCrs,
+      rawMapConversion: {
+        eastings: onDiskE,
+        northings: onDiskN,
+        orthogonalHeight: onDiskH,
+        scale: onDiskScale,
+        xAxisAbscissa: onDiskXAbs,
+        xAxisOrdinate: onDiskXOrd,
+        factorX: isScaled ? factorX : null,
+        factorY: isScaled ? factorY : null,
+        factorZ: isScaled ? factorZ : null,
+      },
+      sourceLabel: isScaled ? "IfcMapConversionScaled" : "IfcMapConversion",
+    }),
+    rawRigidOperation,
+  };
+}
+
+/**
+ * Read the first IfcRigidOperation entity in the model, if any. IFC 4.3
+ * introduces this as a translation-only sibling of IfcMapConversion. We
+ * surface it for inspection only — the editor still drives writes through
+ * IfcMapConversion. Returns null on pre-4.3 schemas (the type-id query
+ * yields 0 results) and on 4.3 files that don't carry one.
+ */
+function readRigidOperationIfc4(
+  ifcAPI: IfcAPI,
+  modelID: number,
+): RawRigidOperation | null {
+  const ids = ifcAPI.GetLineIDsWithType(modelID, IFCRIGIDOPERATION);
+  if (ids.size() === 0) {
+    return null;
+  }
+  const op = ifcAPI.GetLine(modelID, ids.get(0), true);
+  const heightRaw = rawValue(op.Height);
+  const target: any = op.TargetCRS;
+  const targetCrsName = target ? optionalString(target.Name) : null;
+  const result: RawRigidOperation = {
+    firstCoordinate: optionalNumber(op.FirstCoordinate, 0),
+    secondCoordinate: optionalNumber(op.SecondCoordinate, 0),
+    height: heightRaw == null ? null : Number(heightRaw),
+    targetCrsName,
+  };
+  emitLog({
+    source: "worker",
+    message: `Read IfcRigidOperation${targetCrsName ? ` (target ${targetCrsName})` : ""}`,
   });
+  return result;
 }
 
 function readRawProjectedCrsIfc4(target: any): RawProjectedCrs | null {

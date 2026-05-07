@@ -9,6 +9,8 @@
  * mirrors the Flask app's view3D.html.
  */
 
+import type { HelmertParams, XYZ } from "#modules/helmert/solve";
+import type { MeshExtract } from "#modules/ifc/worker";
 import maplibregl, { type Map as MlMap } from "maplibre-gl";
 import * as THREE from "three";
 import {
@@ -32,18 +34,12 @@ import {
   IFCWALLSTANDARDCASE,
   IFCWINDOW,
 } from "web-ifc";
-import type { HelmertParams, XYZ } from "#modules/helmert/solve";
-import type { MeshExtract } from "#modules/ifc/worker";
 
 /**
  * Flip to `true` to enable render-pipeline diagnostics: a magenta 200m cube
  * at the mesh centroid, per-frame NDC logs (frames 0/30/90), and dumps from
  * setMeshes/update. Meant for investigating "why isn't the model visible?"
  * regressions — never ship enabled.
- *
- * Cast to `boolean` (not the literal `false`) so ESLint's
- * `no-unnecessary-condition` doesn't flag every `if (DEBUG)` as unreachable,
- * which would defeat the purpose of a flip-to-debug toggle.
  */
 // eslint-disable-next-line @typescript-eslint/no-inferrable-types
 const DEBUG: boolean = false;
@@ -53,9 +49,7 @@ type Rgb = [red: number, green: number, blue: number];
 /**
  * Fallback colours keyed by IFC line type. Used when web-ifc returns a
  * near-black colour for a mesh — typically because the file has no
- * IfcStyledItem/IfcSurfaceStyle for that product. Values are roughly the
- * BIMsurfer/BIMvision palette so files without styles still read as a
- * coloured building rather than a grey blob.
+ * IfcStyledItem/IfcSurfaceStyle for that product.
  */
 const CLASS_COLOURS = new Map<number, Rgb>([
   [IFCWALL, [0.85, 0.78, 0.65]],
@@ -78,6 +72,7 @@ const CLASS_COLOURS = new Map<number, Rgb>([
   [IFCOPENINGELEMENT, [0.9, 0.9, 0.9]],
   [IFCBUILDINGELEMENTPROXY, [0.8, 0.8, 0.82]],
 ]);
+
 const DEFAULT_COLOUR: [number, number, number] = [0.8, 0.8, 0.82];
 
 export interface ThreeDLayer {
@@ -126,9 +121,11 @@ function createLitScene(): { scene: THREE.Scene; modelGroup: THREE.Group } {
   scene.add(modelGroup);
 
   scene.add(new THREE.AmbientLight(0xFF_FF_EE, 0.9));
+
   const dir1 = new THREE.DirectionalLight(0xFF_FF_FF, 2);
   dir1.position.set(1, 1, 1);
   scene.add(dir1);
+
   const dir2 = new THREE.DirectionalLight(0xFF_FF_FF, 1.2);
   dir2.position.set(-1, 0.5, -1);
   scene.add(dir2);
@@ -228,18 +225,18 @@ function resolveMeshAppearance(mesh: MeshExtract): {
 
   const [r, g, b, a] = mesh.color;
   const isUnstyled = r + g + b < 0.05;
-  
+
   if (isUnstyled) {
     const fallback = CLASS_COLOURS.get(mesh.ifcClass) ?? DEFAULT_COLOUR;
     return { color: new THREE.Color(...fallback), alpha: 1 };
   }
-  
+
   return { color: new THREE.Color(r, g, b), alpha: a };
 }
 
 function createMeshMaterial(mesh: MeshExtract): THREE.MeshLambertMaterial {
   const { color, alpha } = resolveMeshAppearance(mesh);
-  
+
   return new THREE.MeshLambertMaterial({
     color,
     transparent: alpha < 1,
@@ -290,7 +287,7 @@ function buildModelMatrix(
 }
 
 /**
- * Create a 3D custom layer. The returned `layer` is added to the map with
+ * Create a 3D custom Maplibre layer. The returned `layer` is added to the map with
  * `map.addLayer(...)`, and removed with `map.removeLayer(id)`.
  */
 export function createThreeDLayer(): ThreeDLayer {
@@ -342,24 +339,18 @@ export function createThreeDLayer(): ThreeDLayer {
       ) {
         return;
       }
+
       const modelMatrix = buildModelMatrix(currentAnchor, currentParameters);
       // MapLibre v5: the mercator-space projection matrix is
       // `defaultProjectionData.mainMatrix`. The top-level
       // `modelViewProjectionMatrix` is for pixel-space rendering and has a
       // non-standard w-scale that yields invisible geometry when combined
       // with a mercator-unit model matrix.
-      const projectionData = (
-        arguments_ as unknown as {
-          defaultProjectionData?: { mainMatrix?: ArrayLike<number> };
-        }
-      ).defaultProjectionData;
-      const mvpRaw = projectionData?.mainMatrix;
-      if (!mvpRaw) {
-        return;
-      }
-      const mvp = new THREE.Matrix4().fromArray(
-        mvpRaw as unknown as Array<number>,
-      );
+      const projectionData = arguments_.defaultProjectionData;
+      const mvpRaw = projectionData.mainMatrix;
+
+      const mvp = new THREE.Matrix4().fromArray(mvpRaw);
+
       const combined = mvp.clone().multiply(modelMatrix);
       if (DEBUG) {
         // Log frame 0, 30 (mid-fly), 90 (after flyTo settles) so we can see
@@ -407,6 +398,7 @@ export function createThreeDLayer(): ThreeDLayer {
       let totalVertices = 0;
       const bbox = DEBUG ? new THREE.Box3() : null;
       const point = DEBUG ? new THREE.Vector3() : null;
+
       for (const mesh of meshes) {
         const geometry = createShiftedGeometry(mesh, center);
         const material = createMeshMaterial(mesh);
@@ -436,6 +428,7 @@ export function createThreeDLayer(): ThreeDLayer {
           }
         }
       }
+
       if (DEBUG && bbox) {
         const size = bbox.getSize(new THREE.Vector3());
         console.log("[3d-layer] setMeshes:", {
@@ -452,6 +445,7 @@ export function createThreeDLayer(): ThreeDLayer {
             ifcClass: meshes[0].ifcClass,
           },
         });
+
         // Make the debug cube a fixed fraction of the actual mesh extent so
         // it's visible at the same scale as the building regardless of IFC
         // length unit (mm vs m). 30% of the longest axis = always findable

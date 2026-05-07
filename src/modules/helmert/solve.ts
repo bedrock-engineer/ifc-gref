@@ -339,7 +339,15 @@ function isXyRankDeficient(points: Array<PointPair>): boolean {
   return eigMin / eigMax < 1e-6;
 }
 
-function solveSinglePointFallback(
+/**
+ * Single-point closed-form Helmert: identity scale, rotation = TrueNorth,
+ * translation derived directly so the one (local, target) pair is fit
+ * exactly. Used both as the inner fallback by the multi-point solvers
+ * and as the canonical seed-construction primitive — file-load seeding
+ * (IfcSite) and map-click anchoring both call this with a synthetic
+ * `(local, target)` pair so the algebra lives in one place.
+ */
+export function solveSinglePointFallback(
   point: PointPair,
   context: SolverContext,
 ): HelmertParams {

@@ -3,10 +3,38 @@
 html,
 body,
 #root {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100%;
+  overflow: hidden !important;
+}
+
+.main-grid {
+  display: grid;
+  grid-template-areas:
+    "header header"
+    "sidebar map"
+    "diagnostics diagnostics";
   height: 100%;
-}
-
-body {
   overflow: hidden;
+  grid-template-rows: min-content 1fr min-content;
+  grid-template-columns: 424px 1fr;
+  max-height: 100%;
 }
 
+/* Target the hidden input inside the Radio */
+/* Target BOTH the wrapper and the input */
+.group span:has(input[type="radio"]), 
+.group input[type="radio"] {
+  position: absolute !important;
+  top: 0 !important;   /* Move it to the TOP of the label */
+  left: 0 !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+}
