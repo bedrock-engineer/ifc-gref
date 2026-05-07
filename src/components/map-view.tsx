@@ -3,7 +3,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type Ref,
+  type SetStateAction,
 } from "react";
 import { useStickyState } from "../hooks/use-sticky-state";
 import { createPortal } from "react-dom";
@@ -65,7 +67,7 @@ export interface MapViewHandle {
   frameToContent: (signals: MapOverlaySignals) => void;
 }
 
-function useCustomBasemaps() {
+function useCustomBasemaps(setBasemap: Dispatch<SetStateAction<BasemapId>>) {
   const [customBasemaps, setCustomBasemaps] = useStickyState<
     Array<CustomBasemap>
   >(CUSTOM_BASEMAPS_STORAGE_KEY, [], { schema: CustomBasemapsSchema });
@@ -142,7 +144,7 @@ export function MapView({
   const scope = useMapScope(mapRef);
 
   const { customBasemaps, handleAddCustomBasemap, handleRemoveCustomBasemap } =
-    useCustomBasemaps();
+    useCustomBasemaps(setBasemap);
 
   // Gate the 3D toggle: without solved Helmert params + a resolved CRS the
   // 3D layer would render a blank view, so surface the reason in the button
