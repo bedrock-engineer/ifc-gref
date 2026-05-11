@@ -27,7 +27,10 @@ const ENTRIES: ReadonlyArray<Entry> = [
   { metres: 0.001,       label: "millimetre",     short: "mm", intl: "millimeter" },
   { metres: 0.01,        label: "centimetre",     short: "cm", intl: "centimeter" },
   { metres: 0.3048,      label: "foot",           short: "ft", intl: "foot" },
-  { metres: 1200 / 3937, label: "US survey foot", short: "ft", intl: null },
+  // US-survey-foot differs from international foot by ~2 ppm. Intl has no
+  // separate identifier, so we alias to "foot" for display — the conversion
+  // stays correct in metresPerUnit, only the rendered label is shared.
+  { metres: 1200 / 3937, label: "US survey foot", short: "ft", intl: "foot" },
   { metres: 0.0254,      label: "inch",           short: "in", intl: "inch" },
   { metres: 0.9144,      label: "yard",           short: "yd", intl: "yard" },
   { metres: 1609.344,    label: "mile",           short: "mi", intl: "mile" },
@@ -75,4 +78,24 @@ export function describeCrsUnit(crs: CrsDef | null): UnitDescriptor {
     return match;
   }
   return { label: `${crs.metresPerUnit} m`, short: "u", intl: null };
+}
+
+/**
+ * Build `Intl.NumberFormatOptions` for a unit descriptor's `intl` id.
+ * When the unit isn't Intl-renderable (US survey foot before the alias,
+ * nautical mile, custom unknown unit), the field falls back to plain
+ * decimal — column header / label still names the unit. Shared between
+ * the anchor and survey-points cards so they format identically.
+ */
+export function numberFieldFormatForIntl(
+  intlUnit: string | null,
+): Intl.NumberFormatOptions {
+  return intlUnit
+    ? {
+        style: "unit",
+        unit: intlUnit,
+        unitDisplay: "short",
+        maximumFractionDigits: 3,
+      }
+    : { maximumFractionDigits: 3 };
 }

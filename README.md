@@ -132,22 +132,31 @@ neverthrow `Result` for error handling.
 
 ```
 src/
-  worker/
-    ifc/             web-ifc operations
-      georef/        IFC4 vs IFC2X3 read/write, version-split
-      metadata.ts    site, units, true north, length-unit boundary
-      footprint.ts   convex-hull extraction
-      meshes.ts      triangle extraction for 3D
-  lib/               pure TS modules: CRS, units, Helmert, logging, validators
+  modules/             pure-TS domain logic, no React (#modules/* alias)
+    ifc/
+      facade.ts        high-level IFC ops, delegates to the worker
+      lo-geo-ref.ts    Level of Georeferencing classification
+      worker/          Comlink-exposed Web Worker (web-ifc inside)
+        georef/        IfcMapConversion + IfcProjectedCRS, schema-split
+        metadata.ts    schema, site, units, local origin, true north
+        footprint.ts   convex-hull extraction
+        meshes.ts      triangle extraction for 3D
+    crs/               proj4js wrapper, manifest loader, transforms
+    helmert/           least-squares solver + survey-point clipboard parse
+    units/             IFC length-unit conversion + display formatting
+  lib/                 app-level glue: logging, PDOK/Nominatim, validators,
+                       CRS hooks
   components/
-    map/             MapLibre init, custom layers, controls, map hooks
-    sidebar/         cards for file info, CRS, anchor, survey points, save
-    workspace/       workspace-level orchestration hooks
+    map/               MapLibre init, custom layers, controls, hooks
+    sidebar/           cards for file info, CRS, anchor, survey points, save
+    workspace/         workspace-level orchestration hooks
+  worker/              ifc-worker.ts entrypoint (re-exports modules/ifc/worker)
 ```
 
-All IFC / CRS / Helmert logic lives in plain TypeScript under `src/lib/`
-and `src/worker/`; React components call into it via `getIfc()` and
-the lib modules.
+All IFC / CRS / Helmert / units logic lives in `src/modules/`; React
+components call into it via the worker facade and module barrels.
+`src/lib/` holds the smaller, app-level helpers that don't fit a domain
+module.
 
 ## Contributing
 

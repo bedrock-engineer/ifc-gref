@@ -1,6 +1,9 @@
-import maplibregl, { type Map as MlMap, type Marker } from "maplibre-gl";
-import { type RefObject, useEffect, useRef } from "react";
 import type { LngLat } from "#modules/crs";
+import maplibregl, { type Marker, type Map as MlMap } from "maplibre-gl";
+import { type RefObject, useEffect, useRef } from "react";
+
+import { isValidLatLon } from "#lib/validators";
+import type { MapOverlaySignals } from "#state/georef-status/types";
 import {
   ACCENT_COLOR,
   FOOTPRINT_FILL_LAYER_ID,
@@ -9,11 +12,6 @@ import {
 } from "../style";
 import { runWhenMapReady } from "./run-when-map-ready";
 
-import type { MapOverlaySignals } from "#state/georef-status/types";
-
-// High-contrast black for the marker glyph + label. Accent teal disappears
-// on busy basemaps (satellite especially); the label's white text-shadow
-// gives it just enough lift to read.
 const MARKER_FG = "#111";
 
 /**
@@ -47,12 +45,7 @@ export function useMapOverlays(
         signals.mapConversion,
         "mapConversion",
       );
-      syncMarker(
-        map,
-        siteMarkerRef,
-        signals.siteReference,
-        "siteReference",
-      );
+      syncMarker(map, siteMarkerRef, signals.siteReference, "siteReference");
       syncFootprint(map, signals.footprint);
     });
   }, [mapRef, signals]);
@@ -116,7 +109,8 @@ function createMarkerElement(
   wrapper.append(createGlyph(source));
 
   const label = document.createElement("span");
-  label.textContent = source === "mapConversion" ? "IfcMapConversion" : "IfcSite";
+  label.textContent =
+    source === "mapConversion" ? "IfcMapConversion" : "IfcSite";
   label.style.position = "absolute";
   label.style.top = "100%";
   label.style.left = "50%";
@@ -184,9 +178,7 @@ function syncFootprint(
   footprint: Array<[number, number]> | null,
 ): void {
   const hasFootprint = footprint != null && footprint.length >= 3;
-  const existing = map.getSource<maplibregl.GeoJSONSource>(
-    FOOTPRINT_SOURCE_ID,
-  );
+  const existing = map.getSource<maplibregl.GeoJSONSource>(FOOTPRINT_SOURCE_ID);
 
   if (hasFootprint) {
     const ring = [...footprint];
@@ -247,7 +239,8 @@ export function frameCamera(
 ): void {
   const duration = options.duration ?? 0;
   const validFootprint =
-    signals.footprint?.filter((point) => isValidLngLat(point)) ?? [];
+    signals.footprint?.filter(([lat, lon]) => isValidLatLon({ lat, lon })) ??
+    [];
 
   if (validFootprint.length >= 3) {
     const seed = validFootprint[0];
@@ -265,7 +258,10 @@ export function frameCamera(
   // Single-point fallbacks: prefer the precise (MapConversion) anchor when
   // present, otherwise the IfcSite reference.
   const single = signals.mapConversion ?? signals.siteReference;
-  if (single && isValidLngLat([single.longitude, single.latitude])) {
+  if (
+    single &&
+    isValidLatLon({ lat: single.latitude, lon: single.longitude })
+  ) {
     const center: [number, number] = [single.longitude, single.latitude];
     if (duration === 0) {
       map.jumpTo({ center, zoom: 17 });
@@ -273,12 +269,4 @@ export function frameCamera(
       map.flyTo({ center, zoom: 17, duration });
     }
   }
-}
-
-function isValidLngLat([lng, lat]: [number, number]): boolean {
-  return (
-    Number.isFinite(lng) && Number.isFinite(lat) &&
-    lat >= -90 && lat <= 90 &&
-    lng >= -180 && lng <= 180
-  );
 }

@@ -112,7 +112,14 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     [view.findings],
   );
 
-  const { effectiveParameters, provenance, references } = view;
+  // `editableParameters` drives the editing surfaces (AnchorCard,
+  // RotationCard) so a wildly out-of-area typed value stays visible and
+  // the inline validator can fire. `effectiveParameters` is the gated
+  // value — null when the helmert would project outside the active
+  // CRS — and feeds everything that would crash or render NaN on bad
+  // input (map overlays, write, framing, pick). See GeorefView docs.
+  const { editableParameters, effectiveParameters, provenance, references } =
+    view;
   const pickBlockedReason = derivePickBlockedReason(view, activeCrs);
   const saveBlockedReason = deriveSaveBlockedReason(view);
 
@@ -307,6 +314,14 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           metadata={metadata}
           siteOutsideBbox={references.siteOutsideBbox}
           activeCrsCode={activeCrs?.code ?? null}
+          bakedProjectedOrigin={view.bakedProjectedOrigin}
+          canDownloadSidecar={
+            effectiveParameters !== null && activeCrs !== null
+          }
+          onDownloadSidecar={handleDownloadSidecar}
+          onApplySidecar={(file) => {
+            void handleApplySidecar(file);
+          }}
         />
 
         <TargetCrsCard
@@ -319,9 +334,6 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           verticalDatum={verticalDatum}
           onVerticalDatumChange={setVerticalDatum}
           verticalDatumFromFile={metadata.verticalDatumHint !== null}
-          onApplySidecar={(file) => {
-            void handleApplySidecar(file);
-          }}
         />
 
         <Tabs defaultSelectedKey="reference" className="space-y-2">
@@ -349,14 +361,12 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
               <Activity mode={isInert ? "hidden" : "visible"}>
                 <div className="rounded-lg border border-slate-200 bg-white px-2 py-4">
                   <AnchorCard
-                    parameters={effectiveParameters}
+                    parameters={editableParameters}
+                    activeCrs={activeCrs}
                     provenance={provenance}
                     isPicking={isPickingAnchor}
                     canResetToFile={Boolean(metadata.existingGeoref)}
                     pickBlockedReason={pickBlockedReason}
-                    canDownloadSidecar={
-                      effectiveParameters !== null && activeCrs !== null
-                    }
                     onEdit={(params) => {
                       dispatchAnchor({ type: "edited", params });
                     }}
@@ -369,7 +379,6 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
                         frameNow(nextSignalsAfter(fileParams));
                       }
                     }}
-                    onDownloadSidecar={handleDownloadSidecar}
                   />
                 </div>
               </Activity>
@@ -395,7 +404,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
         </Tabs>
 
         <RotationCard
-          parameters={effectiveParameters}
+          parameters={editableParameters}
           provenance={provenance}
           onParametersChange={(params: HelmertParams) => {
             dispatchAnchor({ type: "edited", params });

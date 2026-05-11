@@ -1,5 +1,4 @@
 import { useTransition } from "react";
-import { FileTrigger } from "react-aria-components";
 import { type CrsLookupState } from "#modules/crs";
 import {
   isRetryableOverrideError,
@@ -21,7 +20,6 @@ interface TargetCrsCardProps {
   verticalDatum: string | null;
   onVerticalDatumChange: (value: string | null) => void;
   verticalDatumFromFile: boolean;
-  onApplySidecar: (file: File) => void;
 }
 
 export function TargetCrsCard({
@@ -32,7 +30,6 @@ export function TargetCrsCard({
   verticalDatum,
   onVerticalDatumChange,
   verticalDatumFromFile,
-  onApplySidecar,
 }: TargetCrsCardProps) {
   const provenance: Provenance = fromFile ? "file" : "default";
 
@@ -47,6 +44,20 @@ export function TargetCrsCard({
     <Card
       title="Target CRS"
       headerAside={<ProvenanceBadge provenance={provenance} />}
+      help={
+        <>
+          <p>
+            The Projected CRS to georeference into. Enter an EPSG code (e.g.{" "}
+            <code>28992</code> for RD New, <code>32631</code> for UTM zone
+            31N). The resolved name and area of use appear below the input.
+          </p>
+          <p>
+            If the file already has an IfcProjectedCRS, it's used as the
+            default. For horizontal-only CRSs, a vertical datum picker appears
+            so you can pair it with NAP, EGM2008, etc.
+          </p>
+        </>
+      }
     >
       <CrsField initialCode={epsgCode} onCommit={onChange} />
 
@@ -59,33 +70,7 @@ export function TargetCrsCard({
           fromFile={verticalDatumFromFile}
         />
       )}
-
-      <SidecarApplyControl onApply={onApplySidecar} />
     </Card>
-  );
-}
-
-interface SidecarApplyControlProps {
-  onApply: (file: File) => void;
-}
-
-function SidecarApplyControl({ onApply }: SidecarApplyControlProps) {
-  return (
-    <div className="border-t border-slate-100 pt-2">
-      <FileTrigger
-        acceptedFileTypes={[".ifcgref.json", "application/json"]}
-        onSelect={(files) => {
-          const file = files?.[0];
-          if (file) {
-            onApply(file);
-          }
-        }}
-      >
-        <Button variant="secondary" size="sm" >
-          Apply from .ifcgref.json…
-        </Button>
-      </FileTrigger>
-    </div>
   );
 }
 

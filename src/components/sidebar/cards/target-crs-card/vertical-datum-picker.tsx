@@ -119,7 +119,7 @@ export function VerticalDatumPicker({
       >
         <Group className="flex items-center rounded border border-slate-300 bg-white focus-within:border-slate-500">
           <Input
-            placeholder="e.g. EPSG:5709 or NAP"
+            placeholder="e.g. EPSG:5709"
             className="w-full min-w-0 bg-transparent px-2 py-1 font-mono text-sm outline-none"
             onBlur={() => {
               commitValue(input);

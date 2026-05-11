@@ -70,33 +70,25 @@ export async function writeMapConversion(
   const verticalSuffix = verticalDatum ? `, vertical=${verticalDatum}` : "";
 
   if (schema === "IFC2X3") {
-    // ePset_MapConversion has no MapUnit concept; values are conventionally
-    // in the IFC project's length unit. Convert canonical metres → project
-    // units symmetrically with the IFC2X3 read path.
-    const projectUnitParameters: HelmertParams = {
-      ...parameters,
-      easting: parameters.easting / ifcMetresPerUnit,
-      northing: parameters.northing / ifcMetresPerUnit,
-      height: parameters.height / ifcMetresPerUnit,
-    };
     writeGeorefIfc2x3(
       ifcAPI,
       modelID,
       epsgCode,
       verticalDatum,
-      projectUnitParameters,
+      parameters,
+      ifcMetresPerUnit,
     );
     emitLog({
       source: "worker",
-      message: `Wrote ePset_MapConversion (EPSG:${epsgCode}${verticalSuffix}, scale=${projectUnitParameters.xScale.toFixed(6)}, rot=${projectUnitParameters.rotation.toFixed(4)} rad)`,
+      message: `Wrote ePset_MapConversion (EPSG:${epsgCode}${verticalSuffix}, scale=${parameters.xScale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad)`,
     });
     return;
   }
-  // IFC4+: write Eastings/Northings/OrthogonalHeight in metres directly,
-  // and tag the new IfcProjectedCRS with MapUnit=METRE so the units are
-  // unambiguous to any downstream reader (including our own — round-trip
-  // through the MapUnit-aware reader gives identity). The writer also
-  // converts internal (dimensionless) scale → on-disk scale (project unit
+  // IFC4+: preserve the file's existing IfcProjectedCRS.MapUnit when
+  // present (so a foot-authored file stays foot across save → reload),
+  // and fall back to a fresh IfcSIUnit METRE for fresh files. The writer
+  // converts canonical-metres E/N/H to the MapUnit at its boundary, and
+  // converts internal (dimensionless) scale → on-disk scale (source unit
   // ↔ MapUnit ratio); see writeGeorefIfc4 for the formula.
   //
   // IFC 4.3 with anisotropic scales: dispatch to IfcMapConversionScaled.

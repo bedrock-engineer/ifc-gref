@@ -115,6 +115,7 @@ export function readGeorefIfc2x3(
   const projectedCrs =
     rawProjectedCrs
     ?? {
+      entityName: "ePset_ProjectedCRS",
       name: optionalPropertyString(mcProperties.TargetCRS),
       description: null,
       geodeticDatum: null,
@@ -128,6 +129,7 @@ export function readGeorefIfc2x3(
     helmert,
     rawProjectedCrs: projectedCrs,
     rawMapConversion: {
+      entityName: "ePset_MapConversion",
       eastings: onDiskE,
       northings: onDiskN,
       orthogonalHeight: onDiskH,
@@ -138,7 +140,6 @@ export function readGeorefIfc2x3(
       factorY: null,
       factorZ: null,
     },
-    sourceLabel: "ePset_MapConversion",
   });
 }
 
@@ -148,6 +149,7 @@ function readRawProjectedCrsIfc2x3(
   // ePset_ProjectedCRS mirrors the IFC4 IfcProjectedCRS attributes as
   // free-form properties; readers in the wild may write any subset.
   return {
+    entityName: "ePset_ProjectedCRS",
     name: optionalPropertyString(crsProperties.Name),
     description: optionalPropertyString(crsProperties.Description),
     geodeticDatum: optionalPropertyString(crsProperties.GeodeticDatum),
@@ -177,6 +179,15 @@ function optionalPropertyNumber(v: unknown, fallback: number): number {
  * Mirrors `set_mapconversion_crs_ifc2x3` in georeference_ifc/main.py, which
  * goes through ifcopenshell.api's pset helpers. Here we build the entities
  * directly via web-ifc because there is no equivalent high-level API.
+ *
+ * `parameters` are codebase-canonical (metres + dimensionless scale).
+ * ePset_MapConversion has no MapUnit concept; values are conventionally in
+ * the IFC project's length unit. We divide `Eastings/Northings/
+ * OrthogonalHeight` by `ifcMetresPerUnit` at this boundary, symmetric with
+ * the read path (where `buildHelmertFromFields` is called with
+ * `mapUnitMetresPerUnit: ifcMetresPerUnit`). `Scale` is dimensionless and
+ * round-trips unchanged for IFC2X3 (the source-unit / MapUnit ratio is 1
+ * when both sides are the project length unit).
  */
 export function writeGeorefIfc2x3(
   ifcAPI: IfcAPI,
@@ -184,6 +195,7 @@ export function writeGeorefIfc2x3(
   epsgCode: number,
   verticalDatum: string | null,
   parameters: HelmertParams,
+  ifcMetresPerUnit: number,
 ): void {
   const siteID = findFirstSiteId(ifcAPI, modelID);
   if (siteID == null) {
@@ -227,9 +239,9 @@ export function writeGeorefIfc2x3(
     ownerHistoryHandle,
     [
       property(ifcAPI, modelID, "TargetCRS", IFCLABEL, crsName),
-      property(ifcAPI, modelID, "Eastings", IFCLENGTHMEASURE, parameters.easting),
-      property(ifcAPI, modelID, "Northings", IFCLENGTHMEASURE, parameters.northing),
-      property(ifcAPI, modelID, "OrthogonalHeight", IFCLENGTHMEASURE, parameters.height),
+      property(ifcAPI, modelID, "Eastings", IFCLENGTHMEASURE, parameters.easting / ifcMetresPerUnit),
+      property(ifcAPI, modelID, "Northings", IFCLENGTHMEASURE, parameters.northing / ifcMetresPerUnit),
+      property(ifcAPI, modelID, "OrthogonalHeight", IFCLENGTHMEASURE, parameters.height / ifcMetresPerUnit),
       property(ifcAPI, modelID, "XAxisAbscissa", IFCREAL, xAxisAbscissa),
       property(ifcAPI, modelID, "XAxisOrdinate", IFCREAL, xAxisOrdinate),
       property(ifcAPI, modelID, "Scale", IFCREAL, parameters.xScale),

@@ -89,6 +89,15 @@ export function RotationCard({
     <Card
       title="Rotation & scale"
       headerAside={<ProvenanceBadge provenance={provenance} />}
+      help={
+        <p>
+          The model's rotation around the vertical axis, written as{" "}
+          <code>XAxisAbscissa</code> / <code>XAxisOrdinate</code>; the direction
+          the local +X axis points in the target CRS. The{" "}
+          <strong>Rotation</strong> field shows the same value in degrees for
+          convenience.
+        </p>
+      }
     >
       <div className="space-y-2">
         <NumberField
@@ -96,7 +105,6 @@ export function RotationCard({
           value={angleDegrees}
           onChange={setAngleDegrees}
           isDisabled={!hasParams}
-          step={0.01}
           formatOptions={{
             style: "unit",
             unit: "degree",
@@ -119,7 +127,7 @@ export function RotationCard({
               step={0.0001}
               formatOptions={{ maximumFractionDigits: 6 }}
               description={
-                hasAsymmetricXY && parameters
+                hasAsymmetricXY
                   ? `↳ X ${parameters.xScale} · Y ${parameters.yScale} (file-authored anisotropy; not editable here)`
                   : null
               }

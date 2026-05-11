@@ -18,16 +18,32 @@ function trimZeros(n: number, maxDecimals: number): string {
 interface MapConversionSectionProps {
   raw: RawMapConversion | null;
   status: MapConversionStatus;
+  /**
+   * Entity name to render when `raw` is null (the reader had nothing to
+   * label). When `raw` is non-null the heading uses `raw.entityName`
+   * directly — the reader is authoritative for present data.
+   */
+  absentEntityName: string;
+  /**
+   * Short symbol for the MapUnit governing `raw.eastings/northings/
+   * orthogonalHeight`. Computed by the parent: file's
+   * `IfcProjectedCRS.MapUnit` when set, project length unit otherwise
+   * (the IFC spec fallback). The raw values are verbatim on-disk numbers
+   * (no read-side conversion applied), so the suffix just labels them.
+   */
+  mapUnitShort: string;
 }
 
 export function MapConversionSection({
   raw,
   status,
+  absentEntityName,
+  mapUnitShort,
 }: MapConversionSectionProps) {
   if (status === "absent" || raw == null) {
     return (
       <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
-        <Row label="IfcMapConversion" value="Not present" />
+        <Row label={absentEntityName} value="Not present" />
       </div>
     );
   }
@@ -37,11 +53,10 @@ export function MapConversionSection({
     raw.xAxisOrdinate,
   );
 
-  // FactorX/Y/Z are populated only when the source entity is IFC 4.3's
-  // IfcMapConversionScaled subtype; null on plain IfcMapConversion or
-  // ePset_MapConversion. Driven entirely by the reader.
+  // FactorX/Y/Z rows are rendered exactly when the source entity is IFC
+  // 4.3's IfcMapConversionScaled subtype; null on plain IfcMapConversion
+  // or ePset_MapConversion.
   const isScaled = raw.factorX != null;
-  const heading = isScaled ? "IfcMapConversionScaled" : "IfcMapConversion";
 
   return (
     <Disclosure defaultExpanded>
@@ -53,7 +68,7 @@ export function MapConversionSection({
           <span className="transition-transform group-aria-expanded:rotate-90">
             ▸
           </span>
-          <span className="flex-1">{heading}</span>
+          <span className="flex-1">{raw.entityName}</span>
           {status === "placeholder" && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
               placeholder — ignored
@@ -68,11 +83,17 @@ export function MapConversionSection({
               pair keep 6 because a rotation of 0.5° already lives in the
               5th decimal of cos/sin. trimZeros drops trailing zeros so 0
               renders as "0", not "0.000000". */}
-          <Row label="Eastings" value={trimZeros(raw.eastings, 3)} />
-          <Row label="Northings" value={trimZeros(raw.northings, 3)} />
+          <Row
+            label="Eastings"
+            value={`${trimZeros(raw.eastings, 3)} ${mapUnitShort}`}
+          />
+          <Row
+            label="Northings"
+            value={`${trimZeros(raw.northings, 3)} ${mapUnitShort}`}
+          />
           <Row
             label="OrthogonalHeight"
-            value={trimZeros(raw.orthogonalHeight, 3)}
+            value={`${trimZeros(raw.orthogonalHeight, 3)} ${mapUnitShort}`}
           />
           <Row label="Scale" value={trimZeros(raw.scale, 6)} />
           <Row label="XAxisAbscissa" value={trimZeros(raw.xAxisAbscissa, 6)} />

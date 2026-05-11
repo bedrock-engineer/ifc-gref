@@ -1,5 +1,6 @@
 import {
   Button,
+  FieldError,
   Group,
   Input,
   Label,
@@ -30,6 +31,15 @@ interface NumberFieldProps {
   description?: ReactNode;
   /** Hide the increment/decrement buttons (default: shown). */
   hideSteppers?: boolean;
+  /**
+   * Flips `data-invalid` on the field (amber border) and `aria-invalid` on
+   * the input. Pair with `errorMessage` to render a `<FieldError>`; or set
+   * alone to mark a co-implicated field whose message lives on a sibling.
+   */
+  isInvalid?: boolean;
+  /** Rendered as `<FieldError>` when present — wired to the input via
+   * `aria-describedby` so screen readers announce on focus. */
+  errorMessage?: ReactNode;
 }
 
 /**
@@ -51,6 +61,8 @@ export function NumberField({
   placeholder,
   description,
   hideSteppers,
+  isInvalid,
+  errorMessage,
 }: NumberFieldProps) {
   return (
     <AriaNumberField
@@ -64,6 +76,7 @@ export function NumberField({
       minValue={minValue}
       maxValue={maxValue}
       isDisabled={isDisabled}
+      isInvalid={isInvalid}
       formatOptions={formatOptions}
       aria-label={ariaLabel}
       className="flex flex-col gap-0.5"
@@ -74,7 +87,7 @@ export function NumberField({
           {provenance && <ProvenanceBadge provenance={provenance} />}
         </div>
       )}
-      <Group className="flex items-center rounded border border-slate-300 bg-white focus-within:border-slate-500">
+      <Group className="flex items-center rounded border border-slate-300 bg-white focus-within:border-slate-500 data-invalid:border-amber-500">
         <Input
           placeholder={placeholder}
           className="w-full min-w-0 bg-transparent px-2 py-1 text-right font-mono text-sm outline-none disabled:text-slate-400"
@@ -97,6 +110,11 @@ export function NumberField({
         >
           {description}
         </Text>
+      ) : null}
+      {errorMessage ? (
+        <FieldError className="pl-1 text-xs text-amber-700">
+          {errorMessage}
+        </FieldError>
       ) : null}
     </AriaNumberField>
   );

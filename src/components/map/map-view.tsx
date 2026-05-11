@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
 import { type CrsDef } from "#modules/crs";
 import type { HelmertParams, PointPair } from "#modules/helmert/solve";
 import type { MapOverlaySignals } from "#state/georef-status/types";
-import { useStickyState } from "../../hooks/use-sticky-state";
+import { useStickyState } from "../../lib/use-sticky-state";
 import { LayersPanel } from "./controls/layers-panel";
 import { SearchBox } from "./controls/search-box";
 import { useMapScope } from "./controls/use-scope";
@@ -58,8 +58,9 @@ function deriveThreeDDisabled(
  * camera framing event-shaped instead of an effect that watches state
  * and recovers "did the user just do something" via provenance bails.
  *
- * `frameToContent` is a no-op when 3D is the active view; 3D's own
- * `applyAnchor.flyTo` already follows the anchor on every params change.
+ * `frameToContent` is a no-op when 3D is the active view; 3D owns its
+ * camera and only flies on the initial 3D placement, so 2D's framing
+ * shouldn't fight it.
  */
 export interface MapViewHandle {
   frameToContent: (signals: MapOverlaySignals) => void;
@@ -167,7 +168,7 @@ export function MapView({
   // Imperative camera framing — driven by Workspace event handlers
   // (solve, pick, reset, reproject, sidecar apply) plus its own
   // first-appearance and footprint-promotion effects. 3D bails because
-  // `applyAnchor.flyTo` already moves the camera on every params change.
+  // it owns its own camera while active.
   useImperativeHandle(
     ref,
     () => ({
@@ -175,11 +176,14 @@ export function MapView({
         if (effectiveView !== "2d") {
           return;
         }
+
         const map = mapRef.current;
+
         if (!map) {
           return;
         }
-        frameCamera(map, signals, { duration: 600 });
+
+        frameCamera(map, signals, { duration: 100 });
       },
     }),
     [effectiveView, mapRef],
@@ -206,8 +210,8 @@ export function MapView({
               disabledReason={threeDDisabledReason}
               onChange={(next) => {
                 setView(next);
-                // 3D's `applyAnchor.flyTo` may have moved the camera while
-                // 2D was hidden; reframe to current overlays on return.
+                // 3D's initial placement flyTo may have moved the camera
+                // while 2D was hidden; reframe to current overlays on return.
                 if (next === "2d") {
                   const map = mapRef.current;
                   if (map) {

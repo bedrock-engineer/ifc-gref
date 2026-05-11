@@ -16,5 +16,12 @@ export {
   type SiteReferenceSync,
   writeMapConversion,
 } from "./georef";
-export { type IfcMetadata, readMetadata } from "./metadata";
+export {
+  type IfcMetadata,
+  type RawAxis2Placement,
+  type RawGeometricRepresentationContext,
+  type RawPostalAddress,
+  type RawSite,
+  readMetadata,
+} from "./metadata";
 export { type IfcSchema } from "./schema";

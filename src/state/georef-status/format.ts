@@ -20,10 +20,10 @@ export function findingToLogMessage(finding: Finding): string {
       const { x, y, z } = finding.origin;
       return (
         `IfcSite.ObjectPlacement at (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(1)}) ` +
-        `looks like baked-in projected coordinates. Per buildingSMART's ` +
-        `"User Guide for Geo-referencing in IFC" §3.3, the offset belongs ` +
-        `in IfcMapConversion (IFC4) or ePSet_MapConversion (IFC2X3), not ` +
-        `in IfcSite.ObjectPlacement.`
+        `looks like baked-in projected coordinates. Per the IFC4 schema, ` +
+        `this offset belongs in IfcMapConversion — the entity that ` +
+        `transforms the local engineering coordinate system into the map ` +
+        `coordinate reference system — not in IfcSite.ObjectPlacement.`
       );
     }
     case "site-outside-crs": {
@@ -69,10 +69,8 @@ export function derivePickBlockedReason(
 ): string | null {
   if (view.bakedProjectedOrigin) {
     return (
-      "Pick disabled: this file bakes projected coordinates into " +
-      "IfcSite.ObjectPlacement instead of using IfcMapConversion (see " +
-      "diagnostics). Re-author the file with a small local origin to " +
-      "enable picking."
+      "Pick disabled — see the Source card warning about projected " +
+      "coordinates baked into IfcSite.ObjectPlacement."
     );
   }
   if (!activeCrs) {

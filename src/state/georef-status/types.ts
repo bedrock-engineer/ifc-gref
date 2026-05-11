@@ -86,13 +86,35 @@ export function findingKey(finding: Finding): string {
 }
 
 /**
- * The wide view of "what's the world right now": effective Helmert,
- * provenance for the badge, WGS84 anchors for the map, the baked-origin
- * value (used for both pickBlockedReason and to suppress
- * helmert-outside-crs), and the list of currently-true CRS-scoped
- * findings. Pure derivation — wrap in `useMemo` at the call site.
+ * The wide view of "what's the world right now": Helmert (split into
+ * editable vs effective — see below), provenance for the badge, WGS84
+ * anchors for the map, the baked-origin value (used for both
+ * pickBlockedReason and to suppress helmert-outside-crs), and the list
+ * of currently-true CRS-scoped findings. Pure derivation — wrap in
+ * `useMemo` at the call site.
+ *
+ * Two parameter tracks intentionally:
+ *
+ * - `editableParameters` — what the user is currently editing (or seeded
+ *   from IfcSite / file). Survives projection failure, so the editing
+ *   surface (AnchorCard / RotationCard) keeps showing the typed value
+ *   and its inline validator gets to run. Null only when there's nothing
+ *   to edit yet (no file, no CRS, no seed).
+ *
+ * - `effectiveParameters` — same value, gated by a project-through-proj4
+ *   check (`helmertProjectsInsideCrs`). Drives everything that would
+ *   crash or render NaN on bad input: map overlays, 3D layer, camera
+ *   framing, IFC write, sidecar export, anchor pick. Null whenever the
+ *   current Helmert would land outside the active CRS's domain.
+ *
+ * The two diverge exactly when the user has typed an out-of-area value;
+ * downstream consumers see the gated null while the editing UI keeps
+ * showing what the user typed (and surfaces an inline validation
+ * error). Editing cards consume `editableParameters`; everything else
+ * consumes `effectiveParameters`.
  */
 export interface GeorefView {
+  editableParameters: HelmertParams | null;
   effectiveParameters: HelmertParams | null;
   provenance: Provenance;
   references: MapReferences;

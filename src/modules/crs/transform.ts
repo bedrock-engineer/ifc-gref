@@ -84,7 +84,7 @@ export function transformWgs84ToProjected({
  * don't know the area of use, in which case we skip the check (better to
  * try and fail than to refuse a CRS that might actually work).
  */
-function isWithinBbox(
+export function isWithinBbox(
   longitude: number,
   latitude: number,
   bbox: CrsBbox | null,

@@ -9,13 +9,21 @@ import { Row } from "./row";
 
 interface ProjectedCrsSectionProps {
   raw: RawProjectedCrs | null;
+  /**
+   * Entity name to render when `raw` is null. When `raw` is non-null the
+   * heading uses `raw.entityName` directly.
+   */
+  absentEntityName: string;
 }
 
-export function ProjectedCrsSection({ raw }: ProjectedCrsSectionProps) {
+export function ProjectedCrsSection({
+  raw,
+  absentEntityName,
+}: ProjectedCrsSectionProps) {
   if (!raw || isEmpty(raw)) {
     return (
       <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
-        <Row label="IfcProjectedCRS" value="Not present" />
+        <Row label={absentEntityName} value="Not present" />
       </div>
     );
   }
@@ -30,7 +38,7 @@ export function ProjectedCrsSection({ raw }: ProjectedCrsSectionProps) {
           <span className="transition-transform group-aria-expanded:rotate-90">
             ▸
           </span>
-          IfcProjectedCRS
+          {raw.entityName}
         </Button>
       </Heading>
 

@@ -13,6 +13,13 @@ export interface ExistingGeoref {
  * source-side UI can render "Not present" rows uniformly.
  */
 export interface RawProjectedCrs {
+  /**
+   * Name of the actual entity these fields came from — `"IfcProjectedCRS"`
+   * on IFC4+ and `"ePset_ProjectedCRS"` on IFC2x3. Single source of truth
+   * for the source-side UI's heading; the UI does not re-derive from
+   * schema.
+   */
+  entityName: string;
   name: string | null;
   description: string | null;
   geodeticDatum: string | null;
@@ -54,6 +61,13 @@ export interface RawRigidOperation {
  * exposes via `IfcMapConversion.__dict__`).
  */
 export interface RawMapConversion {
+  /**
+   * Name of the actual entity these fields came from —
+   * `"IfcMapConversion"` (IFC4+ plain), `"IfcMapConversionScaled"` (IFC4.3
+   * subtype with FactorX/Y/Z), or `"ePset_MapConversion"` (IFC2x3 OSArch
+   * convention). Single source of truth for the source-side UI's heading.
+   */
+  entityName: string;
   eastings: number;
   northings: number;
   orthogonalHeight: number;
@@ -139,9 +153,8 @@ export function classifyGeorefRead(input: {
   helmert: HelmertParams;
   rawProjectedCrs: RawProjectedCrs | null;
   rawMapConversion: RawMapConversion;
-  sourceLabel: string;
 }): GeorefRead {
-  const { helmert, rawProjectedCrs, rawMapConversion, sourceLabel } = input;
+  const { helmert, rawProjectedCrs, rawMapConversion } = input;
   const targetCrsName = rawProjectedCrs?.name ?? "";
   const hint = targetCrsName || null;
   const verticalDatum = rawProjectedCrs?.verticalDatum ?? null;
@@ -149,7 +162,7 @@ export function classifyGeorefRead(input: {
   if (isTrivialHelmert(helmert)) {
     emitLog({
       source: "worker",
-      message: `${sourceLabel} is a placeholder (zeros/identity) — ignoring transform, keeping ${targetCrsName} as CRS hint`,
+      message: `${rawMapConversion.entityName} is a placeholder (zeros/identity) — ignoring transform, keeping ${targetCrsName} as CRS hint`,
     });
     return {
       existingGeoref: null,

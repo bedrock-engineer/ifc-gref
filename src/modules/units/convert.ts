@@ -5,11 +5,11 @@ export interface UnitError { kind: 'unknown-unit'; name: string }
 /**
  * Length unit conversion. Maps IFC unit name strings to their conversion
  * factor in metres. Mirrors the unit_mapping table from the Flask app
- * (app.py:191-220) but as a hand-rolled lookup instead of pulling in pint.
- *
- * Both upper and lower case are accepted because real IFC files use both.
+ * (app.py:191-220)
  */
 const UNIT_TO_METRES: Record<string, number> = {
+  KILOMETRE: 1000,
+  KILOMETER: 1000,
   METRE: 1,
   METER: 1,
   CENTIMETRE: 0.01,

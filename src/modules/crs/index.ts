@@ -28,3 +28,7 @@ export {
 export { projectLocalToWgs84, type LngLat } from "./project-local";
 export { deriveCrsViewTarget, type CrsViewTarget } from "./view-target";
 export { parseEpsgCode } from "./parse";
+export {
+  validateProjectedAnchor,
+  type AnchorValidation,
+} from "./validate-projected-anchor";

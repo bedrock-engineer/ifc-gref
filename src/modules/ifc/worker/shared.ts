@@ -12,6 +12,7 @@
 
 import { type IfcAPI, IFCSITE } from "web-ifc";
 import type { HelmertParams } from "#modules/helmert/solve";
+import { unitToMetres } from "#modules/units/convert";
 
 /**
  * Returns the flattened first entity of a given type, or null if there are none.
@@ -124,12 +125,40 @@ export function isTrivialHelmert(h: HelmertParams): boolean {
 }
 
 /**
+ * The `IfcMapConversion.Scale` unit-conversion ratio: source-unit (IFC
+ * project length unit) ↔ MapUnit. Codebase canonical is dimensionless
+ * geometric scale (metres in, metres out — see `modules/helmert/solve.ts`),
+ * but IFC stores Scale as this dimensionful ratio. Read inverts; write
+ * applies:
+ *
+ *     on_disk = internal × onDiskScaleRatio(ifc, map)
+ *     internal = on_disk / onDiskScaleRatio(ifc, map)
+ *
+ * Worked cases:
+ *   - mm IFC + METRE map: ratio = 0.001 (an identity transform writes 0.001)
+ *   - metric IFC + METRE map: ratio = 1 (identity writes 1)
+ *   - metric IFC + FOOT map: ratio = 1/0.3048 ≈ 3.28
+ *   - IFC2X3 ePset (no MapUnit, callers pass map = ifc): ratio = 1, Scale
+ *     round-trips unchanged
+ *
+ * Skipping this conversion shrinks the rendered model by 1000× for an mm
+ * project + METRE MapUnit — the 3D layer disappears and the footprint
+ * collapses to a dot.
+ */
+export function onDiskScaleRatio(
+  ifcMetresPerUnit: number,
+  mapUnitMetresPerUnit: number,
+): number {
+  return ifcMetresPerUnit / mapUnitMetresPerUnit;
+}
+
+/**
  * Build HelmertParams from the six raw numeric fields read off either an
  * IfcMapConversion entity (IFC4+) or an ePset_MapConversion property bag
  * (IFC2X3). Callers pass already-unwrapped values; missing fields get the
  * identity defaults (scale=1, abscissa=1, rest=0).
  *
- * Two distinct unit conversions happen here, both at this read boundary:
+ * Two unit conversions happen at this boundary:
  *
  * 1. **Translation fields** (`Eastings`, `Northings`, `OrthogonalHeight`)
  *    — IFC 4.x stores these in `IfcProjectedCRS.MapUnit`, *not* the IFC
@@ -138,25 +167,8 @@ export function isTrivialHelmert(h: HelmertParams): boolean {
  *    convention there is project units, so callers pass
  *    `mapUnitMetresPerUnit = ifcMetresPerUnit`.)
  *
- * 2. **`Scale`** — IFC stores this as the dimensionless ratio between
- *    *source-CRS units* (the IFC project's length unit) and *target-CRS
- *    units* (the MapUnit). e.g. for an mm project + METRE MapUnit, on-disk
- *    Scale = 0.001 (one mm = 0.001 m). But the codebase canonical (see
- *    `modules/helmert/solve.ts`) is "metres in, metres out, scale dimensionless" —
- *    so a true-identity Helmert is `scale = 1`, *not* `scale = 0.001`.
- *    We strip the unit factor:
- *
- *        internal_scale = on_disk_scale × mapUnit / ifcUnit
- *
- *    For Kievitsweg (mm IFC, METRE MapUnit): 0.001 × 1 / 0.001 = 1.0 ✓
- *    For metric IFC + metric CRS, on_disk = 1.0: 1 × 1 / 1 = 1.0 ✓
- *    For metric IFC + grid factor 0.99996: 0.99996 × 1 / 1 = 0.99996 ✓
- *    For IFC2X3 (ifcUnit == "mapUnit"): the ratio is 1, so the on-disk
- *    Scale passes through unchanged.
- *
- * Skipping this conversion shrinks the rendered model by 1000× for an mm
- * project + METRE MapUnit (the 3D layer disappears, and the footprint
- * collapses to a microscopic dot).
+ * 2. **`Scale`** — strip the on-disk source-unit/MapUnit ratio via
+ *    `onDiskScaleRatio` (see above) to land in dimensionless canonical.
  */
 export function buildHelmertFromFields(
   fields: {
@@ -181,8 +193,9 @@ export function buildHelmertFromFields(
   },
 ): HelmertParams {
   const { mapUnitMetresPerUnit, ifcMetresPerUnit } = units;
-  const scaleRatio = mapUnitMetresPerUnit / ifcMetresPerUnit;
-  const scale = Number(fields.scale ?? 1) * scaleRatio;
+  const scale =
+    Number(fields.scale ?? 1)
+    / onDiskScaleRatio(ifcMetresPerUnit, mapUnitMetresPerUnit);
   const factorX = Number(fields.factorX ?? 1);
   const factorY = Number(fields.factorY ?? 1);
   const factorZ = Number(fields.factorZ ?? 1);
@@ -201,30 +214,22 @@ export function buildHelmertFromFields(
 }
 
 /**
- * Resolve the metres-per-unit factor for `IfcProjectedCRS.MapUnit`. If
- * MapUnit is set (the typical Revit / modern-tool case), parse the
- * IfcSIUnit prefix+name. If unset, fall back to the IFC project's length
- * unit factor — that's what the IFC spec says, and it preserves
- * round-trip behaviour for files we ourselves authored before adopting
- * the explicit-METRE convention.
+ * Resolve metres-per-unit from an IfcSIUnit/IfcConversionBasedUnit's
+ * Prefix + Name pair. Returns null when the name isn't in our table —
+ * callers decide whether to fall back to a project default (read path)
+ * or refuse to preserve an unrecognised MapUnit (write path).
  *
- * Only handles IfcSIUnit (the only thing Revit / dRofus / ArchiCAD emit
- * as a MapUnit in practice). IfcConversionBasedUnit MapUnits would need
- * a separate path; we'd hit it as a discrepancy in `verify:crs`.
+ * Handles both branches:
+ *  - **IfcSIUnit** (METRE with optional prefix): combine `Prefix + Name`
+ *    and resolve through the SI table.
+ *  - **IfcConversionBasedUnit** (FOOT, INCH, US-survey-foot, …): use
+ *    `Name` directly through the shared `unitToMetres` table. We don't
+ *    read `ConversionFactor` for arbitrary precision; for the units we
+ *    care about (international foot, inch, yard, mile) the name-based
+ *    factor is exact, and US-survey-foot is rare enough as a MapUnit
+ *    that the 2 ppm aliasing to international foot is tolerable.
  */
-export function readMapUnitMetresPerUnit(
-  projectedCrs: any,
-  projectFallback: number,
-): number {
-  const mapUnit = projectedCrs?.MapUnit;
-  if (!mapUnit) {
-    return projectFallback;
-  }
-  const prefix = String(rawValue(mapUnit.Prefix) ?? "");
-  const name = String(rawValue(mapUnit.Name) ?? "");
-  if (name.length === 0) {
-    return projectFallback;
-  }
+export function nameToMetresPerUnit(prefix: string, name: string): number | null {
   const fullName = `${prefix}${name}`;
   switch (fullName) {
     case "METRE": {
@@ -242,12 +247,34 @@ export function readMapUnitMetresPerUnit(
     case "KILOMETRE": {
       return 1000;
     }
-    default: {
-      // Unknown MapUnit — fall back rather than guess. Surface in logs so
-      // someone can extend this list when a non-SI MapUnit shows up.
-      return projectFallback;
-    }
   }
+  const conv = unitToMetres(name);
+  if (conv.isOk()) {
+    return conv.value;
+  }
+  return null;
+}
+
+/**
+ * Resolve the metres-per-unit factor for `IfcProjectedCRS.MapUnit`. If
+ * MapUnit is set (the typical Revit / modern-tool case), parse it. If
+ * unset or unrecognised, fall back to the IFC project's length unit
+ * factor — that's what the IFC spec says.
+ */
+export function readMapUnitMetresPerUnit(
+  projectedCrs: any,
+  projectFallback: number,
+): number {
+  const mapUnit = projectedCrs?.MapUnit;
+  if (!mapUnit) {
+    return projectFallback;
+  }
+  const prefix = String(rawValue(mapUnit.Prefix) ?? "");
+  const name = String(rawValue(mapUnit.Name) ?? "");
+  if (name.length === 0) {
+    return projectFallback;
+  }
+  return nameToMetresPerUnit(prefix, name) ?? projectFallback;
 }
 
 /** IfcMapConversion stores rotation as a unit vector (cos θ, sin θ). */

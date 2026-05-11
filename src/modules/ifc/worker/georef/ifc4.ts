@@ -21,6 +21,9 @@ import type { HelmertParams } from "#modules/helmert/solve";
 import { emitLog } from "#lib/log";
 import {
   buildHelmertFromFields,
+  expressIDOf,
+  nameToMetresPerUnit,
+  onDiskScaleRatio,
   rawValue,
   readMapUnitMetresPerUnit,
   rotationToAxisPair,
@@ -113,6 +116,7 @@ export function readGeorefIfc4(
       helmert,
       rawProjectedCrs,
       rawMapConversion: {
+        entityName: isScaled ? "IfcMapConversionScaled" : "IfcMapConversion",
         eastings: onDiskE,
         northings: onDiskN,
         orthogonalHeight: onDiskH,
@@ -123,7 +127,6 @@ export function readGeorefIfc4(
         factorY: isScaled ? factorY : null,
         factorZ: isScaled ? factorZ : null,
       },
-      sourceLabel: isScaled ? "IfcMapConversionScaled" : "IfcMapConversion",
     }),
     rawRigidOperation,
   };
@@ -166,6 +169,7 @@ function readRawProjectedCrsIfc4(target: any): RawProjectedCrs | null {
     return null;
   }
   return {
+    entityName: "IfcProjectedCRS",
     name: optionalString(target.Name),
     description: optionalString(target.Description),
     geodeticDatum: optionalString(target.GeodeticDatum),
@@ -218,11 +222,13 @@ function optionalNumber(v: unknown, fallback: number): number {
  * Mirrors `set_mapconversion_crs_ifc4` in georeference_ifc/main.py.
  *
  * `parameters` are codebase-canonical (metres + dimensionless scale, see
- * `modules/helmert/solve.ts`). We always emit `MapUnit=METRE` so eastings/northings/
- * height go on disk in metres directly. The on-disk Scale, however, is the
- * IFC convention (project unit ↔ MapUnit ratio) — so an mm project's
- * Scale field carries the project unit factor (× `ifcMetresPerUnit`)
- * even though the internal scale is dimensionless.
+ * `modules/helmert/solve.ts`). We preserve the file's existing
+ * `IfcProjectedCRS.MapUnit` when present (so a foot-authored file stays
+ * foot across save → reload) and fall back to a fresh `IfcSIUnit METRE`
+ * for fresh files. The on-disk Scale follows the IFC convention
+ * (source-unit ↔ MapUnit ratio); the on-disk Eastings/Northings/
+ * OrthogonalHeight are in the MapUnit, so canonical-metres parameters
+ * are divided by `mapUnitMetresPerUnit` at this boundary.
  */
 export function writeGeorefIfc4(
   ifcAPI: IfcAPI,
@@ -232,6 +238,12 @@ export function writeGeorefIfc4(
   parameters: HelmertParams,
   ifcMetresPerUnit: number,
 ): void {
+  // Snapshot the file's MapUnit *before* removeExistingGeorefIfc4
+  // deletes the IfcProjectedCRS that referenced it. The entity itself
+  // (an IfcSIUnit or IfcConversionBasedUnit, typically shared with
+  // IfcUnitAssignment) is not cascade-deleted; we re-reference it on
+  // the new IfcProjectedCRS by handle.
+  const preservedMapUnit = findPreservableMapUnit(ifcAPI, modelID);
   removeExistingGeorefIfc4(ifcAPI, modelID);
 
   const contextIds = ifcAPI.GetLineIDsWithType(
@@ -251,19 +263,10 @@ export function writeGeorefIfc4(
       ? ifcAPI.CreateIfcType(modelID, IFCIDENTIFIER, verticalDatum)
       : null;
 
-  // IfcSIUnit for MapUnit. We always write in metres so the file is
-  // unambiguous — Eastings/Northings/OrthogonalHeight on the
-  // IfcMapConversion are then in metres regardless of the IFC project's
-  // length unit. This matches Revit-authored output and round-trips
-  // through readMapUnitMetresPerUnit cleanly.
-  // IfcSIUnit(Dimensions, UnitType, Prefix, Name)
-  const metreUnit = ifcAPI.CreateIfcEntity(
+  const { mapUnitRef, mapUnitMetresPerUnit } = resolveMapUnitForWrite(
+    ifcAPI,
     modelID,
-    IFCSIUNIT,
-    null,
-    { type: 3, value: "LENGTHUNIT" },
-    null,
-    { type: 3, value: "METRE" },
+    preservedMapUnit,
   );
 
   // IfcProjectedCRS(Name, Description, GeodeticDatum, VerticalDatum,
@@ -277,7 +280,7 @@ export function writeGeorefIfc4(
     verticalDatumValue,
     null,
     null,
-    metreUnit,
+    mapUnitRef,
   );
 
   // IfcMapConversion(SourceCRS, TargetCRS, Eastings, Northings,
@@ -286,28 +289,36 @@ export function writeGeorefIfc4(
     parameters.rotation,
   );
 
-  // Inverse of the read-side scale conversion (see `buildHelmertFromFields`):
-  //   on_disk = internal × ifcUnit / mapUnit
-  // We always write mapUnit=METRE here, so the formula simplifies to
-  // × ifcMetresPerUnit. For an mm IFC + identity Helmert this writes the
-  // spec-mandated 0.001; for a metric IFC it writes 1.0.
-  //
   // Writing plain IfcMapConversion drops the per-axis distinction. On
   // pre-4.3 the fitter uses solveHelmertJoint which sets all three scales
   // equal, so nothing is lost. On 4.3 with anisotropic params (from
   // solveHelmertSplit or from reading an IfcMapConversionScaled file), the
   // schema-aware writer in writeMapConversion dispatches to a separate
   // IfcMapConversionScaled writer instead of this function.
-  const onDiskScale = parameters.xScale * ifcMetresPerUnit;
+  const onDiskScale =
+    parameters.xScale
+    * onDiskScaleRatio(ifcMetresPerUnit, mapUnitMetresPerUnit);
 
   const mapConversion = ifcAPI.CreateIfcEntity(
     modelID,
     IFCMAPCONVERSION,
     new Handle(sourceContextID),
     projectedCRS,
-    ifcAPI.CreateIfcType(modelID, IFCLENGTHMEASURE, parameters.easting),
-    ifcAPI.CreateIfcType(modelID, IFCLENGTHMEASURE, parameters.northing),
-    ifcAPI.CreateIfcType(modelID, IFCLENGTHMEASURE, parameters.height),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.easting / mapUnitMetresPerUnit,
+    ),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.northing / mapUnitMetresPerUnit,
+    ),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.height / mapUnitMetresPerUnit,
+    ),
     ifcAPI.CreateIfcType(modelID, IFCREAL, xAxisAbscissa),
     ifcAPI.CreateIfcType(modelID, IFCREAL, xAxisOrdinate),
     ifcAPI.CreateIfcType(modelID, IFCREAL, onDiskScale),
@@ -338,6 +349,7 @@ export function writeGeorefIfc4Scaled(
   parameters: HelmertParams,
   ifcMetresPerUnit: number,
 ): void {
+  const preservedMapUnit = findPreservableMapUnit(ifcAPI, modelID);
   removeExistingGeorefIfc4(ifcAPI, modelID);
 
   const contextIds = ifcAPI.GetLineIDsWithType(
@@ -357,13 +369,10 @@ export function writeGeorefIfc4Scaled(
       ? ifcAPI.CreateIfcType(modelID, IFCIDENTIFIER, verticalDatum)
       : null;
 
-  const metreUnit = ifcAPI.CreateIfcEntity(
+  const { mapUnitRef, mapUnitMetresPerUnit } = resolveMapUnitForWrite(
+    ifcAPI,
     modelID,
-    IFCSIUNIT,
-    null,
-    { type: 3, value: "LENGTHUNIT" },
-    null,
-    { type: 3, value: "METRE" },
+    preservedMapUnit,
   );
 
   const projectedCRS = ifcAPI.CreateIfcEntity(
@@ -375,14 +384,17 @@ export function writeGeorefIfc4Scaled(
     verticalDatumValue,
     null,
     null,
-    metreUnit,
+    mapUnitRef,
   );
 
   const { xAxisAbscissa, xAxisOrdinate } = rotationToAxisPair(
     parameters.rotation,
   );
 
-  const onDiskScale = ifcMetresPerUnit;
+  // Per spec, effective per-axis scale on disk is Scale × Factor<axis>.
+  // Scale carries the source-unit → MapUnit ratio (no geometric component);
+  // FactorX/Y/Z carry the dimensionless geometric scales (typically 1.0).
+  const onDiskScale = onDiskScaleRatio(ifcMetresPerUnit, mapUnitMetresPerUnit);
 
   // IfcMapConversionScaled(SourceCRS, TargetCRS, Eastings, Northings,
   //                        OrthogonalHeight, XAxisAbscissa, XAxisOrdinate,
@@ -392,9 +404,21 @@ export function writeGeorefIfc4Scaled(
     IFCMAPCONVERSIONSCALED,
     new Handle(sourceContextID),
     projectedCRS,
-    ifcAPI.CreateIfcType(modelID, IFCLENGTHMEASURE, parameters.easting),
-    ifcAPI.CreateIfcType(modelID, IFCLENGTHMEASURE, parameters.northing),
-    ifcAPI.CreateIfcType(modelID, IFCLENGTHMEASURE, parameters.height),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.easting / mapUnitMetresPerUnit,
+    ),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.northing / mapUnitMetresPerUnit,
+    ),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.height / mapUnitMetresPerUnit,
+    ),
     ifcAPI.CreateIfcType(modelID, IFCREAL, xAxisAbscissa),
     ifcAPI.CreateIfcType(modelID, IFCREAL, xAxisOrdinate),
     ifcAPI.CreateIfcType(modelID, IFCREAL, onDiskScale),
@@ -423,4 +447,82 @@ function removeExistingGeorefIfc4(ifcAPI: IfcAPI, modelID: number): void {
   for (let index = 0; index < crsIds.size(); index++) {
     ifcAPI.DeleteLine(modelID, crsIds.get(index));
   }
+}
+
+/**
+ * Locate the file's existing IfcProjectedCRS.MapUnit so the writer can
+ * re-reference it on the new IfcProjectedCRS — preserving the author's
+ * stated unit across a save round-trip instead of rewriting it to METRE.
+ *
+ * Returns null when (a) the file has no IfcMapConversion, (b) the
+ * MapConversion's TargetCRS has no MapUnit set, or (c) the MapUnit's
+ * Prefix+Name combination isn't in our conversion table. In all three
+ * cases the writer falls back to constructing a fresh IfcSIUnit METRE,
+ * matching the pre-fix behaviour. We refuse to preserve an unrecognised
+ * MapUnit because we'd have no way to convert the canonical-metres
+ * HelmertParams to its on-disk values.
+ *
+ * Call this *before* removeExistingGeorefIfc4 — that helper deletes the
+ * IfcMapConversion we're reading. The MapUnit entity itself (an
+ * IfcSIUnit or IfcConversionBasedUnit, typically shared with
+ * IfcUnitAssignment) is not cascade-deleted, so the returned expressID
+ * stays valid after the remove.
+ */
+function findPreservableMapUnit(
+  ifcAPI: IfcAPI,
+  modelID: number,
+): { expressID: number; metresPerUnit: number } | null {
+  const ids = ifcAPI.GetLineIDsWithType(modelID, IFCMAPCONVERSION, true);
+  if (ids.size() === 0) {
+    return null;
+  }
+  const mc = ifcAPI.GetLine(modelID, ids.get(0), true);
+  const target = mc.TargetCRS;
+  const mapUnit = target?.MapUnit;
+  if (!mapUnit) {
+    return null;
+  }
+  const expressID = expressIDOf(mapUnit);
+  if (expressID === null) {
+    return null;
+  }
+  const prefix = String(rawValue(mapUnit.Prefix) ?? "");
+  const name = String(rawValue(mapUnit.Name) ?? "");
+  if (name.length === 0) {
+    return null;
+  }
+  const metresPerUnit = nameToMetresPerUnit(prefix, name);
+  if (metresPerUnit == null) {
+    return null;
+  }
+  return { expressID, metresPerUnit };
+}
+
+/**
+ * Pick the MapUnit entity reference to use for the new IfcProjectedCRS,
+ * with its metresPerUnit. Either reuses the file's existing entity by
+ * handle (preserving the author's unit) or constructs a fresh
+ * IfcSIUnit METRE for files that had no recognised MapUnit.
+ */
+function resolveMapUnitForWrite(
+  ifcAPI: IfcAPI,
+  modelID: number,
+  preserved: { expressID: number; metresPerUnit: number } | null,
+): { mapUnitRef: any; mapUnitMetresPerUnit: number } {
+  if (preserved) {
+    return {
+      mapUnitRef: new Handle(preserved.expressID),
+      mapUnitMetresPerUnit: preserved.metresPerUnit,
+    };
+  }
+  // IfcSIUnit(Dimensions, UnitType, Prefix, Name)
+  const metreUnit = ifcAPI.CreateIfcEntity(
+    modelID,
+    IFCSIUNIT,
+    null,
+    { type: 3, value: "LENGTHUNIT" },
+    null,
+    { type: 3, value: "METRE" },
+  );
+  return { mapUnitRef: metreUnit, mapUnitMetresPerUnit: 1 };
 }

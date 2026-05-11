@@ -7,12 +7,17 @@ import type {
 } from "#modules/helmert/solve";
 import type { ParsedPointRow } from "#modules/helmert/survey-point-paste";
 import type { IfcMetadata } from "#modules/ifc/worker";
-import { describeCrsUnit, describeIfcUnit } from "#modules/units/format";
+import {
+  describeCrsUnit,
+  describeIfcUnit,
+  numberFieldFormatForIntl,
+} from "#modules/units/format";
 import { projectIfcSite } from "#state/workspace";
 import { type ReactNode, useReducer, useState } from "react";
 import { Button as AriaButton, Label, RadioGroup } from "react-aria-components";
 import { Button } from "../../input/button";
 import { RadioButton } from "../../input/radio-button";
+import { CardHelpButton } from "../help-popover";
 import { NumberField } from "../number-field";
 import { PasteSurveyPointsButton } from "../paste-survey-points-button";
 import { ResidualsTable } from "../residuals-table";
@@ -22,17 +27,6 @@ import { ResidualsTable } from "../residuals-table";
 // Unit display goes through `describeIfcUnit` / `describeCrsUnit` which
 // converge on a single descriptor (label / short / Intl ID) per unit — see
 // modules/units/format.ts.
-
-function numberFieldFormat(intlUnit: string | null): Intl.NumberFormatOptions {
-  return intlUnit
-    ? {
-        style: "unit",
-        unit: intlUnit,
-        unitDisplay: "short",
-        maximumFractionDigits: 3,
-      }
-    : { maximumFractionDigits: 3 };
-}
 
 interface PointDraft {
   id: string;
@@ -195,6 +189,38 @@ export function SurveyPointsCard({
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-end">
+        <CardHelpButton label="Help: Survey points">
+          <p>Three ways to derive the georeferencing transform:</p>
+          
+          <ul className="list-disc space-y-1 pl-4">
+            <li>
+              <strong>Encode existing</strong>: convert the file's{" "}
+              <code>IfcSite</code>
+              reference into an <code>IfcMapConversion</code>. No accuracy gain,
+              just upgrades the encoding (LoGeoRef 20 → 50).
+            </li>
+
+            <li>
+              <strong>Reference + points</strong>: combine the file's{" "}
+              <code>IfcSite</code>
+              reference with ≥1 surveyed point for a tighter fit.
+            </li>
+
+            <li>
+              <strong>Points only</strong>: ignore the file's{" "}
+              <code>IfcSite</code> reference and fit from ≥2 surveyed pairs.
+            </li>
+          </ul>
+
+          <p>
+            Each row pairs local engineering coordinates (X, Y, Z in IFC units)
+            with target coordinates (X′, Y′, Z′ in CRS units). Paste from Excel
+            works; column headers indicate the expected units.
+          </p>
+        </CardHelpButton>
+      </div>
+
       <RadioGroup
         value={mode}
         onChange={(value) => {
@@ -247,8 +273,8 @@ export function SurveyPointsCard({
             <IfcSiteAnchorMiniCard
               metadata={metadata}
               activeCrs={activeCrs}
-              engineeringFormat={numberFieldFormat(ifcUnit.intl)}
-              projectedFormat={numberFieldFormat(crsUnit.intl)}
+              engineeringFormat={numberFieldFormatForIntl(ifcUnit.intl)}
+              projectedFormat={numberFieldFormatForIntl(crsUnit.intl)}
             />
           )}
 
@@ -259,8 +285,8 @@ export function SurveyPointsCard({
                   key={point.id}
                   index={index}
                   point={point}
-                  engineeringFormat={numberFieldFormat(ifcUnit.intl)}
-                  projectedFormat={numberFieldFormat(crsUnit.intl)}
+                  engineeringFormat={numberFieldFormatForIntl(ifcUnit.intl)}
+                  projectedFormat={numberFieldFormatForIntl(crsUnit.intl)}
                   canRemove={points.length > 1}
                   onField={(key, value) => {
                     dispatch({ type: "update", index, key, value });
@@ -359,6 +385,26 @@ function PointPairAxesGrid({
   onProjected,
   projectedFallback,
 }: PointPairAxesGridProps) {
+  function renderProjectedRow() {
+    if (projected) {
+      return AXES.map((axis) => (
+        <NumberField
+          key={`p-${axis}`}
+          ariaLabel={`${ariaPrefix} projected ${axis.toUpperCase()}`}
+          value={projected[axis]}
+          formatOptions={projectedFormat}
+          hideSteppers
+          isDisabled={isDisabled}
+          onChange={(v) => onProjected?.(axis, v)}
+        />
+      ));
+    }
+    if (projectedFallback) {
+      return <div className="col-span-3">{projectedFallback}</div>;
+    }
+    return null;
+  }
+
   return (
     <div className="grid grid-cols-[5.5rem_1fr_1fr_1fr] items-center gap-y-1.5 gap-x-1 text-xs text-slate-500">
       <span />
@@ -384,21 +430,7 @@ function PointPairAxesGrid({
 
       <span>Projected</span>
 
-      {projected ? (
-        AXES.map((axis) => (
-          <NumberField
-            key={`p-${axis}`}
-            ariaLabel={`${ariaPrefix} projected ${axis.toUpperCase()}`}
-            value={projected[axis]}
-            formatOptions={projectedFormat}
-            hideSteppers
-            isDisabled={isDisabled}
-            onChange={(v) => onProjected?.(axis, v)}
-          />
-        ))
-      ) : projectedFallback ? (
-        <div className="col-span-3">{projectedFallback}</div>
-      ) : null}
+      {renderProjectedRow()}
     </div>
   );
 }

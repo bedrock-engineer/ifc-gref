@@ -1,11 +1,16 @@
+import type { XYZ } from "#modules/helmert/solve";
 import { type LoGeoref } from "#modules/ifc/lo-geo-ref";
-import { directionRatiosToDegrees } from "#state/workspace";
 import type { IfcMetadata } from "#modules/ifc/worker";
+import { unitToMetres } from "#modules/units/convert";
+import { describeIfcUnit } from "#modules/units/format";
 import { Card } from "../card";
+import { GeometricContextSection } from "./source-card/geometric-context-section";
 import { MapConversionSection } from "./source-card/map-conversion-section";
 import { ProjectedCrsSection } from "./source-card/projected-crs-section";
 import { RigidOperationSection } from "./source-card/rigid-operation-section";
 import { Row } from "./source-card/row";
+import { SiteSection } from "./source-card/site-section";
+import { SidecarControls } from "./sidecar-controls";
 
 interface SourceCardProps {
   filename: string;
@@ -18,6 +23,16 @@ interface SourceCardProps {
   siteOutsideBbox: boolean;
   /** EPSG code of the active CRS, used in the outside-bbox tooltip. */
   activeCrsCode: number | null;
+  /**
+   * When the file's local origin looks like projected coordinates baked
+   * into IfcSite.ObjectPlacement (per `detectBakedProjectedOrigin`), this
+   * carries the offending XYZ so the card can flag it inline next to the
+   * Local origin row.
+   */
+  bakedProjectedOrigin: XYZ | null;
+  canDownloadSidecar: boolean;
+  onDownloadSidecar: () => void;
+  onApplySidecar: (file: File) => void;
 }
 
 export function SourceCard({
@@ -25,51 +40,103 @@ export function SourceCard({
   metadata,
   siteOutsideBbox,
   activeCrsCode,
+  bakedProjectedOrigin,
+  canDownloadSidecar,
+  onDownloadSidecar,
+  onApplySidecar,
 }: SourceCardProps) {
   const level = detectLevelOfGeoref(metadata);
+  // Resolve the entity names the source-side UI should display. When the
+  // reader found an entity, use its self-reported name. When it didn't,
+  // fall back to what the schema would expect — the single place in the
+  // UI that maps schema → expected entity name.
+  const isEpsetSchema = metadata.schema === "IFC2X3";
+  const projectLengthUnit = describeIfcUnit(metadata.lengthUnit);
+  // MapConversion E/N/H are on-disk values in MapUnit when present;
+  // when MapUnit isn't set, spec fallback is project length unit. ePset
+  // (IFC2X3) has no MapUnit concept, also falls back.
+  const mapUnitName = metadata.rawProjectedCrs?.mapUnit ?? null;
+  const mapUnitShort = mapUnitName
+    ? describeIfcUnit(mapUnitName).short
+    : projectLengthUnit.short;
+
+  const mapConversionEntity =
+    metadata.rawMapConversion?.entityName ??
+    (isEpsetSchema ? "ePset_MapConversion" : "IfcMapConversion");
+
+  const projectedCrsEntity =
+    metadata.rawProjectedCrs?.entityName ??
+    (isEpsetSchema ? "ePset_ProjectedCRS" : "IfcProjectedCRS");
 
   return (
     <Card title="Source" headerAside={<LevelBadge level={level} />}>
       <dl className="space-y-1 text-sm">
         <Row label="Name" value={filename} />
-        
+
         <Row label="Schema" value={metadata.schema} />
-        
-        <Row label="Length unit" value={metadata.lengthUnit} />
-        
+
         <Row
-          label="IfcSite reference"
-          value={
-            <SiteReferenceValue
-              ref={metadata.siteReference}
-              outsideBbox={siteOutsideBbox}
-              activeCrsCode={activeCrsCode}
-            />
-          }
+          label="Length unit"
+          value={<LengthUnitValue name={metadata.lengthUnit} />}
         />
 
         <Row
           label="Local origin"
           value={formatLocalOrigin(metadata.localOrigin)}
         />
-
-        <Row
-          label="TrueNorth"
-          wrap
-          value={<TrueNorthValue tn={metadata.trueNorth} />}
-        />
       </dl>
 
-      <p className="text-xs text-slate-500">{loGeorefDescription(level)}</p>
+      {bakedProjectedOrigin && (
+        <BakedProjectedOriginNotice origin={bakedProjectedOrigin} />
+      )}
+
+      <p className="text-xs text-slate-500">
+        {loGeorefDescription(level, mapConversionEntity)}
+      </p>
+
+      {isEpsetSchema && (
+        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          IFC2x3 has no native <code>IfcMapConversion</code> or{" "}
+          <code>IfcProjectedCRS</code> entity. Georeferencing is encoded as
+          property sets on <code>IfcSite</code> by the OSArch convention (
+          <code>ePset_MapConversion</code>, <code>ePset_ProjectedCRS</code>) —
+          readable by tools that look for these psets, but not part of the IFC
+          spec.
+        </p>
+      )}
 
       <div className="space-y-2">
-        <ProjectedCrsSection raw={metadata.rawProjectedCrs} />
+        <SiteSection
+          raw={metadata.rawSite}
+          outsideBbox={siteOutsideBbox}
+          activeCrsCode={activeCrsCode}
+          projectLengthUnitShort={projectLengthUnit.short}
+          projectMetresPerUnit={metadata.metresPerUnit}
+        />
+        
+        <GeometricContextSection
+          raw={metadata.rawGeometricRepresentationContext}
+        />
+        
+        <ProjectedCrsSection
+          raw={metadata.rawProjectedCrs}
+          absentEntityName={projectedCrsEntity}
+        />
+
         <MapConversionSection
           raw={metadata.rawMapConversion}
           status={metadata.mapConversionStatus}
+          absentEntityName={mapConversionEntity}
+          mapUnitShort={mapUnitShort}
         />
         <RigidOperationSection raw={metadata.rawRigidOperation} />
       </div>
+
+      <SidecarControls
+        canDownload={canDownloadSidecar}
+        onDownload={onDownloadSidecar}
+        onApply={onApplySidecar}
+      />
     </Card>
   );
 }
@@ -108,16 +175,19 @@ function loGeorefLabel(level: LoGeoref) {
   }
 }
 
-function loGeorefDescription(level: LoGeoref) {
+function loGeorefDescription(
+  level: LoGeoref,
+  conversionEntity: string,
+): string {
   switch (level) {
     case "le10": {
-      return "No IfcSite reference and no IfcMapConversion. File has no usable geo information.";
+      return `No IfcSite reference and no ${conversionEntity}. File has no usable geo information.`;
     }
     case "l20": {
-      return "IfcSite RefLatitude/RefLongitude present, but no IfcMapConversion.";
+      return `IfcSite RefLatitude/RefLongitude present, but no ${conversionEntity}.`;
     }
     case "l50": {
-      return "IfcMapConversion present, file is fully georeferenced.";
+      return `${conversionEntity} present, file is georeferenced.`;
     }
   }
 }
@@ -132,34 +202,19 @@ function detectLevelOfGeoref(metadata: IfcMetadata): LoGeoref {
   return "le10";
 }
 
-interface SiteReferenceValueProps {
-  ref: IfcMetadata["siteReference"];
-  outsideBbox: boolean;
-  activeCrsCode: number | null;
-}
-
-function SiteReferenceValue({
-  ref,
-  outsideBbox,
-  activeCrsCode,
-}: SiteReferenceValueProps) {
-  if (!ref) {
-    return <>Not present</>;
+function LengthUnitValue({ name }: { name: string }) {
+  if (unitToMetres(name).isOk()) {
+    return <>{name}</>;
   }
-  const text = `${ref.latitude.toFixed(6)}°, ${ref.longitude.toFixed(6)}° · ${ref.elevation}m`;
-  if (!outsideBbox) {
-    return <>{text}</>;
-  }
-  const tooltip =
-    activeCrsCode === null
-      ? "Outside the active CRS area of use; not used on map."
-      : `Outside EPSG:${activeCrsCode} area of use; not used on map.`;
   return (
-    <span className="text-rose-700" title={tooltip}>
+    <span
+      className="text-rose-700"
+      title={`Unrecognised IFC length unit '${name}' — treated as metres at the worker boundary; numeric values may be off by the unit factor.`}
+    >
       <span aria-hidden="true" className="mr-1">
         ⚠
       </span>
-      {text}
+      {name}
     </span>
   );
 }
@@ -171,16 +226,32 @@ function formatLocalOrigin(origin: IfcMetadata["localOrigin"]): string {
   return `(${origin.x}, ${origin.y}, ${origin.z})`;
 }
 
-function TrueNorthValue({ tn }: { tn: IfcMetadata["trueNorth"] }) {
-  if (!tn) {
-    return <>—</>;
-  }
-  const degrees = directionRatiosToDegrees(tn.abscissa, tn.ordinate);
+interface BakedProjectedOriginNoticeProps {
+  origin: XYZ;
+}
+
+function BakedProjectedOriginNotice({
+  origin,
+}: BakedProjectedOriginNoticeProps) {
   return (
-    <>
-      <span className="block">{degrees.toFixed(2)}°</span>
-      <span className="block text-xs">abscissa {tn.abscissa.toFixed(4)}</span>
-      <span className="block text-xs">ordinate {tn.ordinate.toFixed(4)}</span>
-    </>
+    <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      The local origin shown above —{" "}
+      <code>
+        ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)}) m
+      </code>{" "}
+      — looks like projected coordinates baked into{" "}
+      <code>IfcSite.ObjectPlacement</code>. Per the{" "}
+      <a
+        href="https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/HTML/schema/ifcrepresentationresource/lexical/ifcmapconversion.htm"
+        className="underline"
+        target="_blank"
+        rel="noreferrer"
+      >
+        IFC4 spec
+      </a>{" "}
+      this offset belongs in <code>IfcMapConversion</code> — the entity that
+      transforms the local engineering coordinate system into the map
+      coordinate reference system.
+    </p>
   );
 }

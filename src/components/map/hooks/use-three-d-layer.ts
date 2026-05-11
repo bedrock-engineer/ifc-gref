@@ -130,9 +130,10 @@ async function setup(
   }
 
   // Create the layer once per 3D session; param changes only re-anchor.
+  const isInitialPlacement = context.threeDRef.current === null;
   if (!context.threeDRef.current) {
     const layer = createThreeDLayer();
-    
+
     context.threeDRef.current = layer;
     context.meshOriginRef.current = layer.setMeshes(meshes);
 
@@ -157,5 +158,6 @@ async function setup(
     context.activeCrs,
     map,
     meshOrigin,
+    isInitialPlacement,
   );
 }

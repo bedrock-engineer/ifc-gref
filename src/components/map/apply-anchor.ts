@@ -12,8 +12,11 @@ import type { ThreeDLayer } from "./layers/three-d-layer";
  * bake RD coordinates into the local frame, so local (0,0,0) can project to
  * somewhere hundreds of km from the actual building.
  *
- * Also flies the camera to the anchor — on the initial placement the 2D
+ * `flyCamera` only flies on the initial placement — without it the 2D
  * `fitBounds` can leave the map far from where the 3D model will render.
+ * Subsequent param tweaks (rotation, E/N sliders) re-anchor in place so
+ * editing doesn't fight the user's camera (forced pitch/zoom snap-back was
+ * jarring). The ZoomToModel control is the explicit re-frame affordance.
  */
 export function applyAnchor(
   layer: ThreeDLayer,
@@ -21,6 +24,7 @@ export function applyAnchor(
   activeCrs: CrsDef,
   map: MlMap,
   meshOrigin: XYZ,
+  flyCamera: boolean,
 ): void {
   // Both meshOrigin (web-ifc auto-converts to metres) and parameters
   // (canonical metres — see modules/helmert/solve.ts) are in metres. The proj4
@@ -63,12 +67,14 @@ export function applyAnchor(
     { lng: ll.longitude, lat: ll.latitude, altitude: absoluteAltitude },
     parameters,
   );
-  map.flyTo({
-    center: [ll.longitude, ll.latitude],
-    zoom: Math.max(map.getZoom(), 17),
-    pitch: 60,
-    duration: 500,
-  });
+  if (flyCamera) {
+    map.flyTo({
+      center: [ll.longitude, ll.latitude],
+      zoom: Math.max(map.getZoom(), 17),
+      pitch: 60,
+      duration: 500,
+    });
+  }
   const altitudeSource = parameters.height === 0 ? "terrain" : "OrthogonalHeight";
   emitLog({
     message: `3D model anchored at ${ll.longitude.toFixed(6)}, ${ll.latitude.toFixed(6)} (alt=${absoluteAltitude.toFixed(2)}m via ${altitudeSource}, scale=${parameters.xScale.toFixed(4)}, rot=${parameters.rotation.toFixed(4)} rad, meshOrigin=(${meshOrigin.x.toFixed(2)}, ${meshOrigin.y.toFixed(2)}, ${meshOrigin.z.toFixed(2)}))`,

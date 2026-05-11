@@ -188,6 +188,7 @@ export function deriveGeorefView(arguments_: {
   }
 
   return {
+    editableParameters: rawParameters,
     effectiveParameters,
     provenance,
     references,
