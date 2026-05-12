@@ -36,7 +36,8 @@ interface ProvenanceBadgeProps {
 export function ProvenanceBadge({ provenance }: ProvenanceBadgeProps) {
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${STYLES[provenance]}`}
+      style={{ textBoxTrim: "trim-both" }}
+      className={`rounded-full px-2 py-0.5  text-xs  font-medium ${STYLES[provenance]}`}
     >
       {LABELS[provenance]}
     </span>

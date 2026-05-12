@@ -19,7 +19,6 @@ interface TargetCrsCardProps {
   fromFile: boolean;
   verticalDatum: string | null;
   onVerticalDatumChange: (value: string | null) => void;
-  verticalDatumFromFile: boolean;
 }
 
 export function TargetCrsCard({
@@ -29,7 +28,6 @@ export function TargetCrsCard({
   fromFile,
   verticalDatum,
   onVerticalDatumChange,
-  verticalDatumFromFile,
 }: TargetCrsCardProps) {
   const provenance: Provenance = fromFile ? "file" : "default";
 
@@ -67,7 +65,6 @@ export function TargetCrsCard({
         <VerticalDatumPicker
           initialValue={verticalDatum}
           onCommit={onVerticalDatumChange}
-          fromFile={verticalDatumFromFile}
         />
       )}
     </Card>
@@ -112,7 +109,7 @@ function LookupDisplay({ state }: LookupDisplayProps) {
   const { def } = state;
 
   return (
-    <div className="space-y-1 rounded border border-slate-100 bg-slate-50 p-2 text-xs">
+    <div className="space-y-1 border border-slate-100 bg-slate-50 p-2 text-xs">
       <div className="font-medium text-slate-900">{def.name}</div>
 
       {def.areaOfUse && <div className="text-slate-600">{def.areaOfUse}</div>}
@@ -158,7 +155,7 @@ function DegradedOverrideBadge({ code, accuracy }: DegradedOverrideBadgeProps) {
     ? "Retrying…"
     : (retryable ? "Retry grid load" : "Cannot retry — file an issue");
   return (
-    <div className="space-y-1 rounded border border-red-300 bg-red-50 p-2 text-red-800">
+    <div className="space-y-1 border border-red-300 bg-red-50 p-2 text-red-800">
       <div>⚠ {accuracy.note}</div>
       <div className="text-[11px] text-red-700">
         {humanReadableOverrideError(accuracy.reason)}

@@ -26,7 +26,12 @@ const BAKED_PROJECTED_THRESHOLD_M = 10_000;
  *
  *  Used both at file-load (to emit a one-shot warning) and inside the
  *  view derivation (downstream consumers gate pick/save and suppress
- *  helmert-outside-crs on it). */
+ *  helmert-outside-crs on it).
+ *
+ *  Short-circuits on `existingGeoref`: when an IfcMapConversion is
+ *  present, this detector says nothing — the dedicated
+ *  `double-baked-origin` finding inside `deriveGeorefView` handles the
+ *  baked-IfcSite-with-existing-MC case with a more specific message. */
 export function detectBakedProjectedOrigin(metadata: IfcMetadata): XYZ | null {
   if (metadata.existingGeoref) {
     return null;
@@ -39,6 +44,44 @@ export function detectBakedProjectedOrigin(metadata: IfcMetadata): XYZ | null {
   }
 
   if (Math.hypot(origin.x, origin.y) < BAKED_PROJECTED_THRESHOLD_M) {
+    return null;
+  }
+
+  return origin;
+}
+
+/** Companion to `detectBakedProjectedOrigin` for the "I already have an
+ *  IfcMapConversion *and* my IfcSite carries projected coords" case. The
+ *  baked detector won't fire (existingGeoref short-circuits), and
+ *  `helmert-outside-crs` would fire with a misleading "placeholder
+ *  transform" message. Returns the baked offset when the combo lands
+ *  geometry outside the CRS — the symptom that makes the file unusable
+ *  without intervention. */
+function detectDoubleBakedOrigin(arguments_: {
+  metadata: IfcMetadata;
+  effectiveParameters: HelmertParams | null;
+}): XYZ | null {
+  const { metadata, effectiveParameters } = arguments_;
+
+  if (!metadata.existingGeoref) {
+    return null;
+  }
+
+  const origin = metadata.localOrigin;
+
+  if (!origin) {
+    return null;
+  }
+
+  if (Math.hypot(origin.x, origin.y) < BAKED_PROJECTED_THRESHOLD_M) {
+    return null;
+  }
+
+  // Gate on the symptom: only flag when the Helmert + baked origin
+  // actually lands outside the CRS. A file with baked IfcSite + a
+  // compensating zero-translation IfcMapConversion is geometrically fine
+  // (spec-quibbles aside) and there's no user-visible problem to surface.
+  if (effectiveParameters !== null) {
     return null;
   }
 
@@ -145,6 +188,9 @@ export function deriveGeorefView(arguments_: {
   );
 
   const bakedProjectedOrigin = detectBakedProjectedOrigin(metadata);
+  const doubleBakedOrigin = activeCrs
+    ? detectDoubleBakedOrigin({ metadata, effectiveParameters })
+    : null;
 
   const findings: Array<Finding> = [];
 
@@ -170,11 +216,22 @@ export function deriveGeorefView(arguments_: {
       });
     }
 
-    // Suppressed when baked-origin already explains the underlying cause:
-    // the bbox mismatch is a downstream symptom and the message would
-    // misdirect the user away from the real fix.
+    if (doubleBakedOrigin) {
+      findings.push({
+        kind: "double-baked-origin",
+        origin: doubleBakedOrigin,
+        crsCode: activeCrs.code,
+        areaOfUse: activeCrs.areaOfUse ?? null,
+      });
+    }
+
+    // Suppressed when baked-origin (no MC) or double-baked-origin (with
+    // MC) already explains the underlying cause: the bbox mismatch is a
+    // downstream symptom and the generic "placeholder transform" wording
+    // would misdirect the user away from the real fix.
     if (
       !bakedProjectedOrigin &&
+      !doubleBakedOrigin &&
       rawParameters !== null &&
       effectiveParameters === null
     ) {
@@ -193,6 +250,7 @@ export function deriveGeorefView(arguments_: {
     provenance,
     references,
     bakedProjectedOrigin,
+    doubleBakedOrigin,
     findings,
   };
 }

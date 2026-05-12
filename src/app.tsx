@@ -1,14 +1,15 @@
+import type { IfcMetadata } from "#modules/ifc/worker";
+import { detectBakedProjectedOrigin } from "#state/georef-status/derive-view";
+import { findingToLogMessage } from "#state/georef-status/format";
 import { useState } from "react";
+import { I18nProvider } from "react-aria-components";
 import { DiagnosticsPanel } from "./components/diagnostics-panel";
 import { Header } from "./components/header";
 import { IdleBody } from "./components/idle-body";
 import { Workspace } from "./components/workspace";
 import { getIfc } from "./ifc-api";
 import { formatBytes } from "./lib/format";
-import { emitLog } from "./lib/log";
-import type { IfcMetadata } from "#modules/ifc/worker";
-import { detectBakedProjectedOrigin } from "#state/georef-status/derive-view";
-import { findingToLogMessage } from "#state/georef-status/format";
+import { clearLog, emitLog } from "./lib/log";
 
 export type Stage =
   | { kind: "idle" }
@@ -25,6 +26,8 @@ export default function App() {
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
 
   async function handleFile(file: File) {
+    clearLog();
+
     setStage({
       kind: "loading",
       filename: file.name,
@@ -93,37 +96,42 @@ export default function App() {
   }
 
   return (
-    <div className="main-grid overflow-hidden bg-slate-50">
-      <Header
-        filename={stage.kind === "loaded" ? stage.filename : null}
-        onFile={(file) => {
-          void handleFile(file);
-        }}
-      />
-
-      {stage.kind === "loaded" ? (
-        <Workspace
-          key={stage.filename}
-          filename={stage.filename}
-          metadata={stage.metadata}
-          onError={(message) => {
-            setStage({ kind: "error", message });
-          }}
-        />
-      ) : (
-        <IdleBody
-          stage={stage}
+    // Force en-US for react-aria's locale-sensitive formatting so every
+    // NumberField renders with a dot decimal separator regardless of the
+    // browser locale, matching the `.toFixed()` style used elsewhere.
+    <I18nProvider locale="en-US">
+      <div className="main-grid overflow-hidden bg-slate-50">
+        <Header
+          filename={stage.kind === "loaded" ? stage.filename : null}
           onFile={(file) => {
             void handleFile(file);
           }}
-          onError={(message) => {
-            emitLog({ level: "warn", message });
-            setStage({ kind: "error", message });
-          }}
         />
-      )}
-      
-      <DiagnosticsPanel />
-    </div>
+
+        {stage.kind === "loaded" ? (
+          <Workspace
+            key={stage.filename}
+            filename={stage.filename}
+            metadata={stage.metadata}
+            onError={(message) => {
+              setStage({ kind: "error", message });
+            }}
+          />
+        ) : (
+          <IdleBody
+            stage={stage}
+            onFile={(file) => {
+              void handleFile(file);
+            }}
+            onError={(message) => {
+              emitLog({ level: "warn", message });
+              setStage({ kind: "error", message });
+            }}
+          />
+        )}
+
+        <DiagnosticsPanel />
+      </div>
+    </I18nProvider>
   );
 }

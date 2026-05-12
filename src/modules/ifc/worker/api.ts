@@ -15,6 +15,7 @@ import { IfcAPI } from "web-ifc";
 // the SPA fallback HTML back, which fails the WASM magic-word check.
 import wasmUrl from "web-ifc/web-ifc.wasm?url";
 import { emitLog } from "#lib/log";
+import { stampHeaderPreprocessor } from "./header";
 
 let api: IfcAPI | null = null;
 
@@ -109,7 +110,8 @@ export async function saveModel(modelID: number): Promise<Blob> {
     copy.set(data);
     chunks.push(copy);
   });
-  return new Blob(chunks, { type: "application/octet-stream" });
+  const raw = new Blob(chunks, { type: "application/octet-stream" });
+  return stampHeaderPreprocessor(raw);
 }
 
 export async function closeModel(modelID: number): Promise<void> {

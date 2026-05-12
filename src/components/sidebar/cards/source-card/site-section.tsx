@@ -49,7 +49,7 @@ export function SiteSection({
 }: SiteSectionProps) {
   if (raw == null) {
     return (
-      <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
+      <div className="border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
         <Row label="IfcSite" value="Not present" />
       </div>
     );
@@ -60,7 +60,7 @@ export function SiteSection({
       <Heading level={3}>
         <Button
           slot="trigger"
-          className="group flex w-full items-center gap-2 rounded text-left text-xs font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+          className="group flex w-full items-center gap-2 rounded text-left text-xs font-semibold text-slate-700 outline-none transition-colors duration-150 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-500"
         >
           <span className="transition-transform group-aria-expanded:rotate-90">
             ▸
@@ -70,7 +70,7 @@ export function SiteSection({
       </Heading>
 
       <DisclosurePanel>
-        <dl className="mt-2 space-y-1 rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
+        <dl className="mt-2 space-y-1 border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
           {/* <Row label="GlobalId" value={raw.globalId ?? "—"} /> */}
           <Row label="Name" value={raw.name ?? "—"} />
           {raw.longName != null && <Row label="LongName" value={raw.longName} />}
@@ -108,8 +108,8 @@ export function SiteSection({
                 ⚠
               </span>
               {activeCrsCode === null
-                ? "Outside the active CRS area of use; not used on map."
-                : `Outside EPSG:${activeCrsCode} area of use; not used on map.`}
+                ? "Outside the active CRS area of use; not shown on map."
+                : `Outside EPSG:${activeCrsCode} area of use; not shown on map.`}
             </p>
           )}
           {raw.landTitleNumber != null && (

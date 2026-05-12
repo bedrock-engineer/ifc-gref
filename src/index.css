@@ -9,6 +9,11 @@ body,
   overflow: hidden !important;
 }
 
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 .main-grid {
   display: grid;
   grid-template-areas:

@@ -43,6 +43,19 @@ export function rawValue(v: any): any {
 }
 
 /**
+ * Unwrap an IFC string-valued field (IfcLabel / IfcText / IfcIdentifier) to
+ * a JS string, mapping null/undefined and empty strings to `null`.
+ */
+export function stringOrNull(v: any): string | null {
+  const raw = rawValue(v);
+  if (raw == null) {
+    return null;
+  }
+  const s = String(raw);
+  return s.length > 0 ? s : null;
+}
+
+/**
  * IfcCompoundPlaneAngleMeasure → decimal degrees. Web-ifc returns the value in
  * one of two shapes depending on schema/path:
  *   - bare array of numbers (IFC2X3 path)
@@ -257,24 +270,96 @@ export function nameToMetresPerUnit(prefix: string, name: string): number | null
 
 /**
  * Resolve the metres-per-unit factor for `IfcProjectedCRS.MapUnit`. If
- * MapUnit is set (the typical Revit / modern-tool case), parse it. If
- * unset or unrecognised, fall back to the IFC project's length unit
- * factor — that's what the IFC spec says.
+ * MapUnit is set (the typical Revit / modern-tool case), parse it.
+ *
+ * When MapUnit is entirely absent, **default to METRE** (1.0), not the
+ * project length unit. The IFC4 spec literally says "fall back to
+ * IfcProject.UnitInContext" here, but that's widely ignored: projected
+ * CRS axes are metres by universal geodetic convention (UTM, RD, all
+ * Lambert variants, …), and file authors invariably write E/N as
+ * projected metres regardless of project unit. Flask / pyproj-based
+ * tools don't even read MapUnit — they trust the CRS axis is metres.
+ * Defaulting to METRE matches what authors mean; the writer emits a
+ * fresh `IfcSIUnit METRE` on save so files self-heal into
+ * spec-compliance on round-trip. `projectFallback` is retained only as
+ * a final fallback for malformed/unrecognised entries.
+ *
+ * Recovery from a malformed MapUnit (seen on Revit exports that shift
+ * IfcSIUnit attributes by one slot, leaving Name=$ and the UnitType
+ * enum sitting in the Prefix slot): when `onDiskScale` is provided and
+ * the file authored Scale per spec convention as the source-unit/MapUnit
+ * ratio, invert it to recover the MapUnit factor:
+ *
+ *     on_disk_scale = ifc_m_per_unit / map_m_per_unit
+ *     map_m_per_unit = ifc_m_per_unit / on_disk_scale
+ *
+ * No-op when the file's Scale is 1 (no unit ratio) — the derivation
+ * collapses to `projectFallback`, matching the previous behaviour.
  */
 export function readMapUnitMetresPerUnit(
   projectedCrs: any,
   projectFallback: number,
+  onDiskScale?: number,
 ): number {
   const mapUnit = projectedCrs?.MapUnit;
   if (!mapUnit) {
-    return projectFallback;
+    return 1;
   }
   const prefix = String(rawValue(mapUnit.Prefix) ?? "");
   const name = String(rawValue(mapUnit.Name) ?? "");
   if (name.length === 0) {
-    return projectFallback;
+    return deriveMapUnitFromScale(projectFallback, onDiskScale);
   }
   return nameToMetresPerUnit(prefix, name) ?? projectFallback;
+}
+
+/**
+ * Reverse the spec-conventional on-disk Scale to recover `mapUnit`
+ * metres-per-unit. Bounded to [1e-6, 1e6] m/unit to reject garbage
+ * factors (real-world units span 0.0254 m for inch up to 1609.34 m for
+ * mile). Falls through to `projectFallback` when `onDiskScale` is
+ * absent, non-finite, non-positive, or yields an out-of-range factor.
+ */
+function deriveMapUnitFromScale(
+  projectFallback: number,
+  onDiskScale: number | undefined,
+): number {
+  if (
+    onDiskScale == undefined
+    || !Number.isFinite(onDiskScale)
+    || onDiskScale <= 0
+  ) {
+    return projectFallback;
+  }
+  const derived = projectFallback / onDiskScale;
+  if (!Number.isFinite(derived) || derived < 1e-6 || derived > 1e6) {
+    return projectFallback;
+  }
+  return derived;
+}
+
+/**
+ * True when `IfcProjectedCRS.MapUnit` is present but missing its `Name`
+ * (the malformation `readMapUnitMetresPerUnit` recovers from). Lets
+ * callers decide whether the recovery fired and whether to surface it.
+ */
+export function isMapUnitNameMissing(projectedCrs: any): boolean {
+  const mapUnit = projectedCrs?.MapUnit;
+  if (!mapUnit) {
+    return false;
+  }
+  const name = String(rawValue(mapUnit.Name) ?? "");
+  return name.length === 0;
+}
+
+/**
+ * True when `IfcProjectedCRS.MapUnit` is entirely absent (the attribute
+ * is `$`). Distinct from `isMapUnitNameMissing` — that one fires for
+ * MapUnit-present-but-malformed. Lets the IFC4 reader log that it
+ * defaulted to METRE for an absent MapUnit.
+ */
+export function isMapUnitAbsent(projectedCrs: any): boolean {
+  return !projectedCrs?.MapUnit;
 }
 
 /** IfcMapConversion stores rotation as a unit vector (cos θ, sin θ). */

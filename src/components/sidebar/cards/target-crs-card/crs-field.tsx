@@ -12,6 +12,7 @@ import {
 import { filterCrsOptions, type CrsOption } from "#modules/crs";
 import { useCrsManifest } from "#lib/use-crs-manifest";
 import { useCrsCommit } from "./use-crs-commit";
+import { TriangleDownIcon } from "@radix-ui/react-icons";
 
 /**
  * Visual grouping is achieved with `isDisabled` "header rows" inside a flat
@@ -21,7 +22,11 @@ import { useCrsCommit } from "./use-crs-commit";
  * or otherwise interacted with," so they read as labels.
  */
 type FlatRow =
-  | { kind: "header"; id: "header-compound" | "header-horizontal"; title: string }
+  | {
+      kind: "header";
+      id: "header-compound" | "header-horizontal";
+      title: string;
+    }
   | (CrsOption & { id: number });
 
 /**
@@ -59,8 +64,13 @@ interface CrsFieldProps {
  * (via `useCrsCommit`) and reads the manifest snapshot directly.
  */
 export function CrsField({ initialCode, onCommit }: CrsFieldProps) {
-  const { input, syntaxError, onInputChange, onCommit: handleCommit, onSelect } =
-    useCrsCommit(initialCode, onCommit);
+  const {
+    input,
+    syntaxError,
+    onInputChange,
+    onCommit: handleCommit,
+    onSelect,
+  } = useCrsCommit(initialCode, onCommit);
 
   const { compound, projected, featured } = useCrsManifest(FEATURED_CODES);
   const manifestEmpty = compound.length === 0 && projected.length === 0;
@@ -129,7 +139,7 @@ export function CrsField({ initialCode, onCommit }: CrsFieldProps) {
       >
         <Label className="text-xs text-slate-600">EPSG code</Label>
 
-        <Group className="flex items-center rounded border border-slate-300 bg-white focus-within:border-slate-500">
+        <Group className="flex items-center rounded border border-slate-300 bg-white transition-[border-color] duration-150 focus-within:border-slate-500">
           <Input
             placeholder="e.g. 7415, 28992 or RD New"
             className="w-full min-w-0 bg-transparent px-2 py-1 font-mono text-sm outline-none"
@@ -141,9 +151,9 @@ export function CrsField({ initialCode, onCommit }: CrsFieldProps) {
 
           <Button
             aria-label="Show suggestions"
-            className="border-l border-slate-200 px-2 py-1 text-xs text-slate-500 outline-none hover:bg-slate-100 focus-visible:bg-slate-100"
+            className="border-l border-slate-200 px-2 py-1 text-xs text-slate-500 outline-none transition-[background-color,color] duration-100 hover:bg-slate-100 hover:text-slate-700 focus-visible:bg-slate-100"
           >
-            ▾
+            <TriangleDownIcon />
           </Button>
         </Group>
 
@@ -159,6 +169,7 @@ export function CrsField({ initialCode, onCommit }: CrsFieldProps) {
           >
             {renderRow}
           </ListBox>
+          
           {truncated && (
             <div className="border-t border-slate-100 px-2 py-1 text-[11px] text-slate-500">
               Showing first {MAX_RESULTS} matches, keep typing to refine.
@@ -189,7 +200,7 @@ function renderRow(row: FlatRow) {
     <ListBoxItem
       id={row.id}
       textValue={String(row.code)}
-      className="cursor-pointer px-2 py-1.5 text-xs outline-none data-focused:bg-slate-100 data-selected:bg-slate-100"
+      className="cursor-pointer px-2 py-1.5 text-xs outline-none data-hovered:bg-slate-100 data-focused:bg-slate-100 data-selected:bg-slate-100"
     >
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-slate-900">EPSG:{row.code}</span>

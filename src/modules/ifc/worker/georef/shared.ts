@@ -28,10 +28,25 @@ export interface RawProjectedCrs {
   mapZone: string | null;
   /**
    * Combined IfcSIUnit `Prefix + Name` (e.g. "METRE", "MILLIMETRE") or the
-   * raw string from ePset_ProjectedCRS. Null when MapUnit is unset — the
-   * spec then says treat as project length unit.
+   * raw string from ePset_ProjectedCRS. Null when MapUnit is unset OR
+   * present-but-malformed (`Name=$`) — the badge in the source-card
+   * disambiguates via `mapUnitStatus`.
    */
   mapUnit: string | null;
+  /**
+   * Provenance for the metres-per-unit factor the reader resolved. Drives
+   * the source-card MapUnit-row badge so users see how the absent /
+   * malformed cases were handled:
+   *  - `explicit`              — mapUnit string is the source of truth
+   *  - `absent`                — MapUnit attribute is `$`, defaulted to METRE
+   *  - `recovered-from-scale`  — malformed Name=$, recovered via Scale inversion
+   *  - `malformed-fallback`    — malformed Name=$, recovery failed → project unit
+   */
+  mapUnitStatus:
+    | "explicit"
+    | "absent"
+    | "recovered-from-scale"
+    | "malformed-fallback";
 }
 
 /**
@@ -83,6 +98,28 @@ export interface RawMapConversion {
   factorX: number | null;
   factorY: number | null;
   factorZ: number | null;
+  /**
+   * Verbatim attributes of the IfcGeometricRepresentationContext that
+   * `IfcMapConversion.SourceCRS` points to. Useful when a file carries
+   * multiple contexts (Model/Plan/Body) — the MapConversion is attached
+   * to a specific one, and the link is otherwise invisible. Null on IFC2X3
+   * (ePset_MapConversion has no SourceCRS attribute).
+   */
+  sourceCrs: RawSourceCrs | null;
+}
+
+/**
+ * Verbatim IfcGeometricRepresentationContext fields surfaced for the
+ * MapConversion source-side display. `entityName` distinguishes a top-level
+ * `IfcGeometricRepresentationContext` from an `IfcGeometricRepresentation
+ * SubContext` — the latter is technically a spec violation as SourceCRS
+ * (MapConversion should attach to the parent context, not a Body/Plan
+ * subcontext), but files in the wild do it.
+ */
+export interface RawSourceCrs {
+  entityName: string;
+  contextIdentifier: string | null;
+  contextType: string | null;
 }
 
 /**

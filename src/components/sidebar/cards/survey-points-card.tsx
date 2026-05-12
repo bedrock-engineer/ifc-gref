@@ -253,7 +253,7 @@ export function SurveyPointsCard({
 
       {(showSiteAnchor || showPointsTable) && (
         <div className="space-y-2">
-          <div className="flex items-baseline justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
+          <div className="flex items-baseline justify-between gap-2 border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
             <span>
               <span className="font-medium text-slate-700">Engineering</span>{" "}
               (IFC) [{ifcUnit.label}]
@@ -483,7 +483,7 @@ function IfcSiteAnchorMiniCard({
     : null;
 
   return (
-    <div className="space-y-1.5 rounded border border-slate-200 bg-slate-50 p-2.5">
+    <div className="space-y-1.5 border border-slate-200 bg-slate-50 p-2.5">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
           IfcSite anchor
@@ -519,7 +519,7 @@ function ModeOption({ value, label, hint, disabled }: ModeOptionProps) {
     <RadioButton
       value={value}
       isDisabled={disabled}
-      className="flex items-start gap-2 rounded border border-slate-200 p-2 text-xs data-selected:border-slate-900 data-selected:bg-slate-50"
+      className="flex items-start gap-2 rounded border border-slate-200 p-2 text-xs transition-colors duration-150 data-hovered:border-slate-400 data-hovered:bg-slate-50 data-selected:border-slate-900 data-selected:bg-slate-50"
       indicatorClassName="mt-0.5"
     >
       <span>
@@ -562,7 +562,7 @@ function PointMiniCard({
   onRemove,
 }: PointMiniCardProps) {
   return (
-    <div className="space-y-1.5 rounded border border-slate-200 bg-white p-2.5">
+    <div className="space-y-1.5 border border-slate-200 bg-white p-2.5">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
           Point {index + 1}
@@ -572,7 +572,7 @@ function PointMiniCard({
           <AriaButton
             onPress={onRemove}
             aria-label={`Remove point ${index + 1}`}
-            className="rounded px-1 text-slate-400 outline-none hover:text-red-600 focus-visible:ring-2 focus-visible:ring-slate-500"
+            className="relative flex size-5 items-center justify-center rounded text-base leading-none text-slate-400 outline-none transition-[color,background-color,scale] duration-100 before:absolute before:-top-2 before:-right-2.5 before:bottom-0 before:left-0 before:content-[''] hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-slate-500 data-pressed:scale-[0.96]"
           >
             ×
           </AriaButton>

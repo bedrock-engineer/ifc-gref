@@ -24,7 +24,7 @@ import {
   readExistingGeoref,
 } from "./georef";
 import { type IfcSchema, parseSchema } from "./schema";
-import { dmsToDecimal, firstOf, rawValue } from "./shared";
+import { dmsToDecimal, firstOf, rawValue, stringOrNull } from "./shared";
 
 /**
  * Verbatim-from-file IfcSite attributes (inherited from IfcRoot /
@@ -274,15 +274,6 @@ function readPostalAddress(address: any): RawPostalAddress | null {
     postalCode: stringOrNull(address.PostalCode),
     country: stringOrNull(address.Country),
   };
-}
-
-function stringOrNull(v: any): string | null {
-  const raw = rawValue(v);
-  if (raw == null) {
-    return null;
-  }
-  const s = String(raw);
-  return s.length > 0 ? s : null;
 }
 
 function readLocalOrigin(site: any, ifcMetresPerUnit: number): XYZ | null {

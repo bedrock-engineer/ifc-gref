@@ -1,5 +1,10 @@
 import type { HelmertParams } from "#modules/helmert/solve";
-import type { IfcMetadata, MeshExtract, SiteReferenceSync } from "#modules/ifc/worker";
+import type {
+  IfcMetadata,
+  MeshExtract,
+  SiteReferenceSync,
+  SpaceExtract,
+} from "#modules/ifc/worker";
 
 /**
  * Backend-agnostic interface for IFC file operations. The UI calls
@@ -27,6 +32,11 @@ export interface IfcFacade {
   /** Extract triangle meshes for 3D rendering. */
   extractMeshes(): Promise<Array<MeshExtract>>;
   /**
+   * Extract per-IfcSpace 2D convex hulls in local IFC metres, plus
+   * Name/LongName for labelling.
+   */
+  extractSpaces(): Promise<Array<SpaceExtract>>;
+  /**
    * Write IfcMapConversion + IfcProjectedCRS into the open model. When
    * `siteReference` is provided, IfcSite.RefLatitude/RefLongitude/
    * RefElevation are overwritten to match, keeping the two georef
@@ -40,6 +50,15 @@ export interface IfcFacade {
     parameters: HelmertParams,
     siteReference: SiteReferenceSync | null,
   ): Promise<void>;
+  /**
+   * Overwrite `IfcSite.ObjectPlacement.RelativePlacement.Location.
+   * Coordinates` to `(0, 0, 0)`. Use when an exporter baked projected
+   * coordinates into the site placement: pair with `writeMapConversion`
+   * whose translation equals the original baked offset to preserve world
+   * positions while moving the offset into the spec-correct entity.
+   * Leaves placement rotation (Axis/RefDirection) untouched.
+   */
+  zeroSitePlacementLocation(): Promise<void>;
   /**
    * Serialize the (possibly modified) model back to an IFC file. Returned
    * as a `Blob` so the backend can stream chunks out without materializing

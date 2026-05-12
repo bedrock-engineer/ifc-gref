@@ -22,10 +22,20 @@ export interface MapReferences {
 export interface MapOverlaySignals {
   /** Footprint convex hull as a closed ring of WGS84 lng/lat. */
   footprint: Array<[number, number]> | null;
+  /** Per-IfcSpace convex-hull polygons, each projected to WGS84. */
+  spaces: ReadonlyArray<SpaceOverlay> | null;
   /** Live IfcMapConversion-derived anchor — moves with edited Helmert params. */
   mapConversion: LngLat | null;
   /** IfcSite RefLat/RefLon (already filtered for outside-bbox cases). */
   siteReference: LngLat | null;
+}
+
+export interface SpaceOverlay {
+  expressID: number;
+  name: string | null;
+  longName: string | null;
+  /** Closed ring of [lng, lat]. */
+  polygon: Array<[number, number]>;
 }
 
 /**
@@ -39,14 +49,26 @@ export interface MapOverlaySignals {
  *     `app.tsx::handleFile` for baked-origin), not from a render-time
  *     effect.
  *   - CRS-scoped (`site-outside-crs`, `helmert-outside-crs`,
- *     `grid-degraded`) can transition when the user picks a different
- *     CRS. They flow through `GeorefView.findings` and are deduplicated
- *     by `${kind}:${crsCode}` so the log doesn't repeat per slider edit
- *     or CRS round-trip.
+ *     `double-baked-origin`, `grid-degraded`) can transition when the
+ *     user picks a different CRS. They flow through `GeorefView.findings`
+ *     and are deduplicated by `${kind}:${crsCode}` so the log doesn't
+ *     repeat per slider edit or CRS round-trip.
  */
 export type Finding =
   | { kind: "unknown-length-unit"; unit: string }
   | { kind: "baked-projected-origin"; origin: XYZ }
+  | {
+      /** IfcSite.ObjectPlacement carries projected coordinates *and* an
+       * IfcMapConversion is present that compounds with them — applying
+       * the Helmert to the baked local origin lands geometry outside the
+       * active CRS's area of use. More specific than `helmert-outside-crs`
+       * (which only knows "the transform doesn't work") because it names
+       * the root cause: two carriers of the offset, double-translation. */
+      kind: "double-baked-origin";
+      origin: XYZ;
+      crsCode: number;
+      areaOfUse: string | null;
+    }
   | {
       kind: "site-outside-crs";
       site: LngLat;
@@ -79,6 +101,7 @@ export function findingKey(finding: Finding): string {
     }
     case "site-outside-crs":
     case "helmert-outside-crs":
+    case "double-baked-origin":
     case "grid-degraded": {
       return `${finding.kind}:${finding.crsCode}`;
     }
@@ -119,5 +142,12 @@ export interface GeorefView {
   provenance: Provenance;
   references: MapReferences;
   bakedProjectedOrigin: XYZ | null;
+  /** Set when `existingGeoref` is present *and* `IfcSite.ObjectPlacement`
+   *  carries a baked offset *and* the combo lands geometry outside the
+   *  active CRS. The "remove duplicate offset from IfcSite" notice in
+   *  the source card binds to this — distinct from `bakedProjectedOrigin`
+   *  (no MC) because the fix is different (just zero the placement; the
+   *  existing IfcMapConversion is already the source of truth). */
+  doubleBakedOrigin: XYZ | null;
   findings: ReadonlyArray<Finding>;
 }

@@ -9,6 +9,7 @@ import {
 } from "react-aria-components";
 import type { ReactNode } from "react";
 import { ProvenanceBadge, type Provenance } from "./provenance-badge";
+import { TriangleDownIcon, TriangleUpIcon } from "@radix-ui/react-icons";
 
 interface NumberFieldProps {
   /** Visible label above the input. Omit for inline/grid usage; pair with ariaLabel. */
@@ -64,6 +65,13 @@ export function NumberField({
   isInvalid,
   errorMessage,
 }: NumberFieldProps) {
+  // Default off so values render as `155000.123` (no comma thousands
+  // separators), matching the `.toFixed()` style used elsewhere in the app.
+  // Callers can opt back in via `formatOptions={{ useGrouping: true }}`.
+  const mergedFormatOptions: Intl.NumberFormatOptions = {
+    useGrouping: false,
+    ...formatOptions,
+  };
   return (
     <AriaNumberField
       value={value ?? undefined}
@@ -77,7 +85,7 @@ export function NumberField({
       maxValue={maxValue}
       isDisabled={isDisabled}
       isInvalid={isInvalid}
-      formatOptions={formatOptions}
+      formatOptions={mergedFormatOptions}
       aria-label={ariaLabel}
       className="flex flex-col gap-0.5"
     >
@@ -87,27 +95,28 @@ export function NumberField({
           {provenance && <ProvenanceBadge provenance={provenance} />}
         </div>
       )}
-      <Group className="flex items-center rounded border border-slate-300 bg-white focus-within:border-slate-500 data-invalid:border-amber-500">
+
+      <Group className="flex items-center rounded border border-slate-300 bg-white transition-[border-color] duration-150 focus-within:border-slate-500 data-invalid:border-amber-500">
         <Input
           placeholder={placeholder}
           className="w-full min-w-0 bg-transparent px-2 py-1 text-right font-mono text-sm outline-none disabled:text-slate-400"
         />
+
         {!hideSteppers && (
           <div className="flex flex-col border-l border-slate-200">
             <Stepper slot="increment" label="Increase">
-              ▲
+              <TriangleUpIcon />
             </Stepper>
+            
             <Stepper slot="decrement" label="Decrease">
-              ▼
+              <TriangleDownIcon />
             </Stepper>
           </div>
         )}
       </Group>
+
       {description ? (
-        <Text
-          slot="description"
-          className="pl-1 text-xs text-slate-500"
-        >
+        <Text slot="description" className="pl-1 text-xs text-slate-500">
           {description}
         </Text>
       ) : null}
@@ -131,7 +140,7 @@ function Stepper({ slot, label, children }: StepperProps) {
     <Button
       slot={slot}
       aria-label={label}
-      className="flex h-3 w-5 items-center justify-center text-[8px] leading-none text-slate-500 outline-none hover:bg-slate-100 focus-visible:bg-slate-100 disabled:text-slate-300"
+      className="flex h-3 w-5 items-center justify-center text-[8px] leading-none text-slate-500 outline-none transition-colors duration-100 hover:bg-slate-100 hover:text-slate-700 focus-visible:bg-slate-100 disabled:text-slate-300"
     >
       {children}
     </Button>

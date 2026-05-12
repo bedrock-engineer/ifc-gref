@@ -1,8 +1,9 @@
 import type { XYZ } from "#modules/helmert/solve";
 import { type LoGeoref } from "#modules/ifc/lo-geo-ref";
-import type { IfcMetadata } from "#modules/ifc/worker";
+import type { IfcMetadata, RawProjectedCrs } from "#modules/ifc/worker";
 import { unitToMetres } from "#modules/units/convert";
 import { describeIfcUnit } from "#modules/units/format";
+import { Button } from "../../input/button";
 import { Card } from "../card";
 import { GeometricContextSection } from "./source-card/geometric-context-section";
 import { MapConversionSection } from "./source-card/map-conversion-section";
@@ -27,9 +28,41 @@ interface SourceCardProps {
    * When the file's local origin looks like projected coordinates baked
    * into IfcSite.ObjectPlacement (per `detectBakedProjectedOrigin`), this
    * carries the offending XYZ so the card can flag it inline next to the
-   * Local origin row.
+   * Local origin row. Mutually exclusive with `doubleBakedOrigin`.
    */
   bakedProjectedOrigin: XYZ | null;
+  /**
+   * Counterpart of `bakedProjectedOrigin` for files that *also* have an
+   * IfcMapConversion carrying the same offset (double-baked). The notice
+   * here proposes a different fix — just zero the IfcSite placement,
+   * leave the existing IfcMapConversion alone. Mutually exclusive with
+   * `bakedProjectedOrigin`. */
+  doubleBakedOrigin: XYZ | null;
+  /**
+   * True when a target CRS is selected. The "Move offset to
+   * IfcMapConversion" action needs a CRS to be meaningful (the offset is
+   * interpreted in CRS units on write), so the button is disabled until
+   * the user picks one.
+   */
+  hasActiveCrs: boolean;
+  /**
+   * True while either baked-origin repair handler is running. Shared
+   * pending flag — at most one of the two notices is visible at a time
+   * (the underlying detectors are mutually exclusive), so collisions
+   * aren't possible.
+   */
+  isRepairingBakedOrigin: boolean;
+  /** Adopt the baked offset as the IfcMapConversion anchor. The
+   *  click handler zeros the site placement in the worker immediately,
+   *  refreshes metadata, and dispatches the anchor — so the notice
+   *  itself naturally disappears on the next render (bakedProjectedOrigin
+   *  detector returns null on the refreshed metadata). */
+  onAdoptBakedOrigin: () => void;
+  /** Zero IfcSite.ObjectPlacement.RelativePlacement.Location without
+   *  touching IfcMapConversion. Used by the double-baked notice — the
+   *  existing IfcMapConversion is already correct on its own, the IfcSite
+   *  placement is the duplicate that needs to go. */
+  onClearSitePlacement: () => void;
   canDownloadSidecar: boolean;
   onDownloadSidecar: () => void;
   onApplySidecar: (file: File) => void;
@@ -41,6 +74,11 @@ export function SourceCard({
   siteOutsideBbox,
   activeCrsCode,
   bakedProjectedOrigin,
+  doubleBakedOrigin,
+  hasActiveCrs,
+  isRepairingBakedOrigin,
+  onAdoptBakedOrigin,
+  onClearSitePlacement,
   canDownloadSidecar,
   onDownloadSidecar,
   onApplySidecar,
@@ -52,13 +90,24 @@ export function SourceCard({
   // UI that maps schema → expected entity name.
   const isEpsetSchema = metadata.schema === "IFC2X3";
   const projectLengthUnit = describeIfcUnit(metadata.lengthUnit);
-  // MapConversion E/N/H are on-disk values in MapUnit when present;
-  // when MapUnit isn't set, spec fallback is project length unit. ePset
-  // (IFC2X3) has no MapUnit concept, also falls back.
+  // MapConversion E/N/H are on-disk values in MapUnit when present.
+  // When MapUnit is absent: IFC4 reader defaults to METRE (projected CRS
+  // axes are metres by universal convention — see readMapUnitMetresPerUnit).
+  // IFC2X3 ePset has no MapUnit concept; its convention is project units.
   const mapUnitName = metadata.rawProjectedCrs?.mapUnit ?? null;
-  const mapUnitShort = mapUnitName
-    ? describeIfcUnit(mapUnitName).short
-    : projectLengthUnit.short;
+  const mapUnitFallbackName = isEpsetSchema ? metadata.lengthUnit : "METRE";
+  const mapUnitShort = describeIfcUnit(mapUnitName ?? mapUnitFallbackName).short;
+  // Badge text for the MapUnit row when the reader couldn't pin down a
+  // unit from the file. Picked from (status, schema): IFC4 defaults to
+  // METRE on absent; the malformed-shift pattern (Revit + ifcopenshell
+  // round-trip, e.g. via the old Flask app) is either recovered from
+  // Scale or falls back to project unit; IFC2X3 ePset has no MapUnit
+  // entity and falls back to project unit by ePset convention.
+  const mapUnitFallbackLabel = describeMapUnitFallback({
+    status: metadata.rawProjectedCrs?.mapUnitStatus ?? "absent",
+    isEpsetSchema,
+    projectLengthUnitShort: projectLengthUnit.short,
+  });
 
   const mapConversionEntity =
     metadata.rawMapConversion?.entityName ??
@@ -87,7 +136,20 @@ export function SourceCard({
       </dl>
 
       {bakedProjectedOrigin && (
-        <BakedProjectedOriginNotice origin={bakedProjectedOrigin} />
+        <BakedProjectedOriginNotice
+          origin={bakedProjectedOrigin}
+          hasActiveCrs={hasActiveCrs}
+          isPending={isRepairingBakedOrigin}
+          onAdopt={onAdoptBakedOrigin}
+        />
+      )}
+
+      {doubleBakedOrigin && (
+        <DoubleBakedOriginNotice
+          origin={doubleBakedOrigin}
+          isPending={isRepairingBakedOrigin}
+          onClear={onClearSitePlacement}
+        />
       )}
 
       <p className="text-xs text-slate-500">
@@ -95,7 +157,7 @@ export function SourceCard({
       </p>
 
       {isEpsetSchema && (
-        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <p className="border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           IFC2x3 has no native <code>IfcMapConversion</code> or{" "}
           <code>IfcProjectedCRS</code> entity. Georeferencing is encoded as
           property sets on <code>IfcSite</code> by the OSArch convention (
@@ -121,6 +183,7 @@ export function SourceCard({
         <ProjectedCrsSection
           raw={metadata.rawProjectedCrs}
           absentEntityName={projectedCrsEntity}
+          absentMapUnitLabel={mapUnitFallbackLabel}
         />
 
         <MapConversionSection
@@ -223,35 +286,134 @@ function formatLocalOrigin(origin: IfcMetadata["localOrigin"]): string {
   if (!origin) {
     return "—";
   }
-  return `(${origin.x}, ${origin.y}, ${origin.z})`;
+  return `(${origin.x.toFixed(4)}, ${origin.y.toFixed(4)}, ${origin.z.toFixed(4)})`;
+}
+
+interface DoubleBakedOriginNoticeProps {
+  origin: XYZ;
+  isPending: boolean;
+  onClear: () => void;
+}
+
+/** Renders when IfcSite.ObjectPlacement carries a projected offset *and*
+ *  IfcMapConversion carries the same offset — the two compound and place
+ *  geometry outside the active CRS. The fix is non-destructive: just
+ *  zero the IfcSite placement, leave the existing IfcMapConversion as
+ *  the sole carrier. No CRS needed for this action (the IfcMapConversion
+ *  is already authored), hence no `hasActiveCrs` gate. */
+function DoubleBakedOriginNotice({
+  origin,
+  isPending,
+  onClear,
+}: DoubleBakedOriginNoticeProps) {
+  return (
+    <div className="space-y-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <p>
+        The local origin shown above —{" "}
+        <code>
+          ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)}) m
+        </code>{" "}
+        — duplicates the offset already carried by <code>IfcMapConversion</code>.
+        Applying the Helmert to the baked local origin places geometry outside
+        the active CRS (double-translation). The offset belongs in{" "}
+        <code>IfcMapConversion</code> only.
+      </p>
+      <Button
+        variant="secondary"
+        size="sm"
+        isPending={isPending}
+        onPress={onClear}
+      >
+        {isPending ? "Clearing…" : "Remove duplicate offset from IfcSite"}
+      </Button>
+    </div>
+  );
 }
 
 interface BakedProjectedOriginNoticeProps {
   origin: XYZ;
+  hasActiveCrs: boolean;
+  isPending: boolean;
+  onAdopt: () => void;
 }
 
 function BakedProjectedOriginNotice({
   origin,
+  hasActiveCrs,
+  isPending,
+  onAdopt,
 }: BakedProjectedOriginNoticeProps) {
   return (
-    <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-      The local origin shown above —{" "}
-      <code>
-        ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)}) m
-      </code>{" "}
-      — looks like projected coordinates baked into{" "}
-      <code>IfcSite.ObjectPlacement</code>. Per the{" "}
-      <a
-        href="https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/HTML/schema/ifcrepresentationresource/lexical/ifcmapconversion.htm"
-        className="underline"
-        target="_blank"
-        rel="noreferrer"
-      >
-        IFC4 spec
-      </a>{" "}
-      this offset belongs in <code>IfcMapConversion</code> — the entity that
-      transforms the local engineering coordinate system into the map
-      coordinate reference system.
-    </p>
+    <div className="space-y-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <p>
+        The local origin shown above —{" "}
+        <code>
+          ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)}) m
+        </code>{" "}
+        — looks like projected coordinates baked into{" "}
+        <code>IfcSite.ObjectPlacement</code>. Per the{" "}
+        <a
+          href="https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/HTML/schema/ifcrepresentationresource/lexical/ifcmapconversion.htm"
+          className="underline transition-colors duration-100 hover:text-amber-950 focus-visible:text-amber-950 focus-visible:outline-1 focus-visible:outline-amber-700"
+          target="_blank"
+          rel="noreferrer"
+        >
+          IFC4 spec
+        </a>{" "}
+        this offset belongs in <code>IfcMapConversion</code> — the entity that
+        transforms the local engineering coordinate system into the map
+        coordinate reference system.
+      </p>
+      <div className="space-y-1">
+        <Button
+          variant="secondary"
+          size="sm"
+          isDisabled={!hasActiveCrs}
+          isPending={isPending}
+          onPress={onAdopt}
+        >
+          {isPending ? "Moving offset…" : "Move offset to IfcMapConversion"}
+        </Button>
+        {!hasActiveCrs && (
+          <p className="text-amber-800">
+            Pick a target CRS first — the offset is interpreted in CRS units
+            on write.
+          </p>
+        )}
+        <p className="text-amber-800">
+          Rotation in the placement (if any) stays where it is. Verify
+          orientation in the rotation card after.
+        </p>
+      </div>
+    </div>
   );
+}
+
+function describeMapUnitFallback(args: {
+  status: RawProjectedCrs["mapUnitStatus"];
+  isEpsetSchema: boolean;
+  projectLengthUnitShort: string;
+}): string {
+  const { status, isEpsetSchema, projectLengthUnitShort } = args;
+  // Status comes from the reader's classification of the MapUnit entity.
+  // The schema axis only matters for `absent` — IFC4 defaults to METRE,
+  // IFC2X3 ePset has no MapUnit concept and falls back to project unit.
+  switch (status) {
+    case "explicit": {
+      // Only reached when raw.mapUnit happens to be null while status is
+      // 'explicit' — shouldn't happen, defensive fallback.
+      return "—";
+    }
+    case "absent": {
+      return isEpsetSchema
+        ? `absent — using project unit (${projectLengthUnitShort})`
+        : "absent — assumed METRE";
+    }
+    case "recovered-from-scale": {
+      return "malformed — recovered METRE from Scale";
+    }
+    case "malformed-fallback": {
+      return `malformed — fell back to project unit (${projectLengthUnitShort})`;
+    }
+  }
 }

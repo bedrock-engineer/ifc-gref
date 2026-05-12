@@ -3,14 +3,19 @@ import { getIfc } from "../../ifc-api";
 import { emitLog } from "../../lib/log";
 
 /**
- * Fire `extractFootprint()` once per Workspace mount. Workspace is keyed
- * by filename in the parent, so a new file gets a fresh extraction.
+ * Fire `extractFootprint()` once per Workspace mount, and again every
+ * time `epoch` changes — bumped by the parent after an in-place worker
+ * mutation that invalidates extracted geometry (e.g. site-placement
+ * zero). Workspace is keyed by filename, so a new file remounts and
+ * starts fresh.
  *
  * Returned in IFC local coordinates — the projection through the active
  * Helmert + CRS happens at the consumer (MapView), since lng/lat is a
  * map-presentational concern.
  */
-export function useExtractedFootprint(): Array<{ x: number; y: number }> | null {
+export function useExtractedFootprint(
+  epoch = 0,
+): Array<{ x: number; y: number }> | null {
   const [footprint, setFootprint] = useState<Array<{
     x: number;
     y: number;
@@ -35,7 +40,7 @@ export function useExtractedFootprint(): Array<{ x: number; y: number }> | null 
     return () => {
       token.cancelled = true;
     };
-  }, []);
+  }, [epoch]);
 
   return footprint;
 }

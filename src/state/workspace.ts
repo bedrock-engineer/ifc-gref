@@ -205,6 +205,21 @@ export function directionRatiosToDegrees(
 }
 
 /**
+ * Convert IFC direction ratios to a surveyor's bearing — CW from grid north,
+ * normalised to [0, 360). IFC stores CCW-from-east in `(abscissa, ordinate)`;
+ * surveyors and GIS people think CW-from-north. Same formula works for
+ * IfcMapConversion's X-axis (engineering X in map frame) and for TrueNorth's
+ * (sin θ, cos θ) encoding (true north in engineering frame) — the bearing
+ * just has different meaning depending on what the direction represents.
+ */
+export function directionRatiosToBearing(
+  abscissa: number,
+  ordinate: number,
+): number {
+  return (90 - directionRatiosToDegrees(abscissa, ordinate) + 360) % 360;
+}
+
+/**
  * When the user swaps the target CRS, keep the anchor's *geographic*
  * position fixed: round-trip (E,N) through lat/lon so the pin on the map
  * doesn't jump. Rotation and height are preserved — grid convergence

@@ -17,6 +17,11 @@ export const FOOTPRINT_SOURCE_ID = "ifc-footprint";
 export const FOOTPRINT_FILL_LAYER_ID = "ifc-footprint-fill";
 export const FOOTPRINT_LINE_LAYER_ID = "ifc-footprint-line";
 
+export const SPACES_SOURCE_ID = "ifc-spaces";
+export const SPACES_FILL_LAYER_ID = "ifc-spaces-fill";
+export const SPACES_LINE_LAYER_ID = "ifc-spaces-line";
+export const SPACES_COLOR = "#2563eb";
+
 export const AXES_SOURCE_ID = "ifc-axes";
 export const AXES_LINE_LAYER_ID = "ifc-axes-line";
 export const IFC_X_AXIS_COLOR = "#dc2626";

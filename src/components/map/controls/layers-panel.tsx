@@ -34,6 +34,10 @@ interface LayersPanelProps {
   customBasemaps: ReadonlyArray<CustomBasemap>;
   /** Current geographic scope of the map (tracks `useMapMapScope`). */
   scope: MapScope;
+  /** True when the loaded file contains IfcSpace entities. */
+  hasSpaces: boolean;
+  showSpaces: boolean;
+  onShowSpacesChange: (next: boolean) => void;
   onBasemapChange: (id: BasemapId) => void;
   onOverlaysChange: (next: Record<OverlayId, boolean>) => void;
   onAddCustomBasemap: (b: CustomBasemap) => void;
@@ -49,6 +53,27 @@ const CHECKBOX_ROW =
   "group flex cursor-pointer items-center gap-1.5 py-0.5 outline-none data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-disabled:cursor-not-allowed data-disabled:opacity-50";
 
 const NL_ONLY_TITLE = "Only available in the Netherlands";
+
+function CheckboxIndicator() {
+  return (
+    <span className="flex size-3 items-center justify-center rounded-sm border border-slate-400 group-data-selected:border-slate-900 group-data-selected:bg-slate-900">
+      <svg
+        viewBox="0 0 10 10"
+        aria-hidden="true"
+        className="hidden size-2.5 text-white group-data-selected:block"
+      >
+        <path
+          d="M2 5.2 L4.2 7.4 L8 3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
 
 // A layer is unreachable from the current viewport when it has no data
 // where the map is looking. We only disable picker rows the user *could*
@@ -69,6 +94,9 @@ export function LayersPanel({
   overlays,
   customBasemaps,
   scope,
+  hasSpaces,
+  showSpaces,
+  onShowSpacesChange,
   onBasemapChange,
   onOverlaysChange,
   onAddCustomBasemap,
@@ -124,6 +152,19 @@ export function LayersPanel({
           </div>
         ))}
       </RadioGroup>
+      {hasSpaces && (
+        <div className="flex flex-col pt-1">
+          <span className={HEADING}>IFC content</span>
+          <Checkbox
+            isSelected={showSpaces}
+            onChange={onShowSpacesChange}
+            className={CHECKBOX_ROW}
+          >
+            <CheckboxIndicator />
+            <span>Spaces</span>
+          </Checkbox>
+        </div>
+      )}
       {OVERLAYS.length > 0 && (
         <div className="flex flex-col pt-1">
           <span className={HEADING}>Overlays</span>
@@ -140,22 +181,7 @@ export function LayersPanel({
                 }}
                 className={CHECKBOX_ROW}
               >
-                <span className="flex size-3 items-center justify-center rounded-sm border border-slate-400 group-data-selected:border-slate-900 group-data-selected:bg-slate-900">
-                  <svg
-                    viewBox="0 0 10 10"
-                    aria-hidden="true"
-                    className="hidden size-2.5 text-white group-data-selected:block"
-                  >
-                    <path
-                      d="M2 5.2 L4.2 7.4 L8 3"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
+                <CheckboxIndicator />
                 <span title={outOfMapScope ? NL_ONLY_TITLE : undefined}>
                   {o.label}
                 </span>

@@ -5,6 +5,7 @@ import {
   useReducer,
   useRef,
   useState,
+  useTransition,
 } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 
@@ -19,10 +20,12 @@ import {
 import { emitLog } from "#lib/log";
 import { type HelmertParams } from "#modules/helmert/solve";
 import type { IfcMetadata } from "#modules/ifc/worker";
+import { getIfc } from "../ifc-api";
 import { deriveGeorefView } from "#state/georef-status/derive-view";
 import {
   derivePickBlockedReason,
   deriveSaveBlockedReason,
+  deriveSaveWarning,
   findingToLogMessage,
 } from "#state/georef-status/format";
 import { deriveOverlaySignals } from "#state/georef-status/overlay-signals";
@@ -45,8 +48,10 @@ import { Sidebar } from "./sidebar/sidebar";
 import { createHelmertSolver } from "./workspace/helmert-solve";
 import { useAnchorPick } from "./workspace/use-anchor-pick";
 import { useExtractedFootprint } from "./workspace/use-extracted-footprint";
+import { useExtractedSpaces } from "./workspace/use-extracted-spaces";
 import { useIfcWrite } from "./workspace/use-ifc-write";
 import { useTargetCrs } from "./workspace/use-target-crs";
+import { writeMapConversionToWorker } from "./workspace/write-map-conversion";
 
 const mapContainerStyle = { gridArea: "map" };
 
@@ -56,7 +61,21 @@ export interface WorkspaceProps {
   onError: (message: string) => void;
 }
 
-export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
+export function Workspace({
+  filename,
+  metadata: initialMetadata,
+  onError,
+}: WorkspaceProps) {
+  // Metadata lives locally so in-place worker mutations (e.g. site-
+  // placement zero from the baked-origin warning) can refresh it without
+  // bouncing through app.tsx. The prop only seeds — a new file remounts
+  // Workspace via `key={filename}` at the parent, which re-seeds.
+  const [metadata, setMetadata] = useState(initialMetadata);
+
+  // Bumped after a worker mutation that invalidates extracted geometry
+  // (footprint/spaces). The extraction hooks re-fetch on epoch change.
+  const [extractEpoch, setExtractEpoch] = useState(0);
+
   const [anchor, dispatchAnchor] = useReducer(
     makeAnchorReducer(metadata.existingGeoref),
     metadata,
@@ -122,8 +141,10 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     view;
   const pickBlockedReason = derivePickBlockedReason(view, activeCrs);
   const saveBlockedReason = deriveSaveBlockedReason(view);
+  const saveWarning = deriveSaveWarning(activeCrs, verticalDatum);
 
-  const footprintLocal = useExtractedFootprint();
+  const footprintLocal = useExtractedFootprint(extractEpoch);
+  const spacesLocal = useExtractedSpaces(extractEpoch);
 
   // Camera framing is event-driven: solve, pick, reset, reproject, sidecar
   // each call `frameNow` directly. The two effects below cover data-arrival
@@ -136,8 +157,9 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
         effectiveParameters,
         activeCrs,
         footprintLocal,
+        spacesLocal,
       }),
-    [references, effectiveParameters, activeCrs, footprintLocal],
+    [references, effectiveParameters, activeCrs, footprintLocal, spacesLocal],
   );
 
   const mapViewRef = useRef<MapViewHandle>(null);
@@ -162,6 +184,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
       effectiveParameters: params,
       activeCrs,
       footprintLocal,
+      spacesLocal,
     });
   }
 
@@ -226,6 +249,131 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
     },
     onError: reportError,
   });
+
+  // "Move offset to IfcMapConversion" from the baked-origin warning.
+  // Both mutations happen on click (not at save), so the source card
+  // re-reflects the repaired file immediately: localOrigin → (0,0,0),
+  // baked-origin detector stops firing, IfcMapConversion section shows
+  // the new anchor instead of "placeholder — ignored", and LoGeoRef
+  // level promotes to 50. On save, useIfcWrite writes MapConversion
+  // again with whatever the user edited in between — write is idempotent
+  // (remove existing + write new). Caller-side: button is disabled until
+  // a CRS is selected, so `activeCrs` should be non-null by the time we
+  // get here. Defensive guard for bakedProjectedOrigin is here in case
+  // the warning's visibility ever drifts from this handler's.
+  //
+  // useTransition gates the button into a pending state while the three
+  // worker calls run (zero placement → write MC → re-read metadata). On
+  // large IFCs this can take a few seconds; without the pending state
+  // the user can't tell whether the click landed.
+  // One shared pending flag for both baked-origin repair paths. The two
+  // notices that fire these handlers are mutually exclusive (one needs
+  // `existingGeoref`, the other its absence), so only one button can be
+  // in flight at a time — splitting into two flags would be ceremony.
+  const [isRepairingBakedOrigin, startRepair] = useTransition();
+  function handleAdoptBakedOriginAsAnchor() {
+    if (!view.bakedProjectedOrigin || !activeCrs) {
+      return;
+    }
+    const baked = view.bakedProjectedOrigin;
+    const params: HelmertParams = {
+      easting: baked.x,
+      northing: baked.y,
+      height: baked.z,
+      xScale: 1,
+      yScale: 1,
+      zScale: 1,
+      rotation: 0,
+    };
+    const ifc = getIfc();
+    startRepair(async () => {
+      try {
+        await ifc.zeroSitePlacementLocation();
+      } catch (error) {
+        reportError(
+          `Failed to zero IfcSite.ObjectPlacement: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return;
+      }
+      try {
+        await writeMapConversionToWorker({
+          ifc,
+          parameters: params,
+          activeCrs,
+          verticalDatum,
+        });
+      } catch (error) {
+        reportError(
+          `Failed to write IfcMapConversion: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return;
+      }
+      try {
+        const fresh = await ifc.readMetadata();
+        // Batched into one render so we never flash a "stale localOrigin
+        // + new params" view (which would land the helmert outside the
+        // CRS bbox and gate save off mid-render). React 18 batches state
+        // updates inside async event handlers across awaits.
+        setMetadata(fresh);
+        dispatchAnchor({ type: "edited", params });
+        setExtractEpoch((previous) => previous + 1);
+        // Let the framing effects re-fire when fresh footprint/refs land.
+        hasFramedRef.current = false;
+        framedWithFootprintRef.current = false;
+        emitLog({
+          message:
+            `Moved IfcSite placement offset (${baked.x.toFixed(2)}, ${baked.y.toFixed(2)}, ${baked.z.toFixed(2)}) m into IfcMapConversion anchor`,
+        });
+      } catch (error) {
+        reportError(
+          `Failed to refresh metadata after repair: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    });
+  }
+
+  // "Remove duplicate offset from IfcSite" from the double-baked-origin
+  // notice. Unlike the adopt-baked-origin path above, we do *not* touch
+  // IfcMapConversion — the file already has a real one that carries the
+  // same offset; that's the whole double-baked condition. Just zero the
+  // IfcSite placement so the combo stops double-translating, then re-read
+  // metadata so localOrigin → (0,0,0) on the source card and the
+  // double-baked detector stops firing.
+  function handleClearSitePlacement() {
+    if (!view.doubleBakedOrigin) {
+      return;
+    }
+    const offset = view.doubleBakedOrigin;
+    const ifc = getIfc();
+    startRepair(async () => {
+      try {
+        await ifc.zeroSitePlacementLocation();
+      } catch (error) {
+        reportError(
+          `Failed to zero IfcSite.ObjectPlacement: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return;
+      }
+      try {
+        const fresh = await ifc.readMetadata();
+        setMetadata(fresh);
+        setExtractEpoch((previous) => previous + 1);
+        // Let the framing effects re-fire once effectiveParameters
+        // promotes from null back to a real value (the whole reason we
+        // did this).
+        hasFramedRef.current = false;
+        framedWithFootprintRef.current = false;
+        emitLog({
+          message:
+            `Zeroed IfcSite.ObjectPlacement (was (${offset.x.toFixed(2)}, ${offset.y.toFixed(2)}, ${offset.z.toFixed(2)}) m, duplicated by IfcMapConversion)`,
+        });
+      } catch (error) {
+        reportError(
+          `Failed to refresh metadata after zeroing site placement: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    });
+  }
 
   function handleDownloadSidecar() {
     if (!effectiveParameters || !activeCrs) {
@@ -305,6 +453,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
               effectiveParameters !== null && saveBlockedReason === null
             }
             blockedReason={saveBlockedReason}
+            warning={saveWarning}
             onWrite={write}
           />
         }
@@ -315,6 +464,11 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           siteOutsideBbox={references.siteOutsideBbox}
           activeCrsCode={activeCrs?.code ?? null}
           bakedProjectedOrigin={view.bakedProjectedOrigin}
+          doubleBakedOrigin={view.doubleBakedOrigin}
+          hasActiveCrs={activeCrs !== null}
+          isRepairingBakedOrigin={isRepairingBakedOrigin}
+          onAdoptBakedOrigin={handleAdoptBakedOriginAsAnchor}
+          onClearSitePlacement={handleClearSitePlacement}
           canDownloadSidecar={
             effectiveParameters !== null && activeCrs !== null
           }
@@ -333,7 +487,6 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           fromFile={Boolean(metadata.existingGeoref?.targetCrsName)}
           verticalDatum={verticalDatum}
           onVerticalDatumChange={setVerticalDatum}
-          verticalDatumFromFile={metadata.verticalDatumHint !== null}
         />
 
         <Tabs defaultSelectedKey="reference" className="space-y-2">
@@ -343,14 +496,14 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           >
             <Tab
               id="reference"
-              className="cursor-pointer rounded px-3 py-1.5 text-center text-slate-600 outline-none data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-selected:bg-white data-selected:text-slate-900 data-selected:shadow-sm"
+              className="cursor-pointer rounded px-3 py-1.5 text-center text-slate-600 outline-none transition-[background-color,color,box-shadow] duration-150 data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-hovered:text-slate-900 data-selected:bg-white data-selected:text-slate-900 data-selected:shadow-sm"
             >
               Reference point
             </Tab>
 
             <Tab
               id="survey"
-              className="cursor-pointer rounded px-3 py-1.5 text-center text-slate-600 outline-none data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-selected:bg-white data-selected:text-slate-900 data-selected:shadow-sm"
+              className="cursor-pointer rounded px-3 py-1.5 text-center text-slate-600 outline-none transition-[background-color,color,box-shadow] duration-150 data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-hovered:text-slate-900 data-selected:bg-white data-selected:text-slate-900 data-selected:shadow-sm"
             >
               Survey points
             </Tab>
@@ -359,7 +512,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           <TabPanel id="reference" shouldForceMount>
             {({ isInert }) => (
               <Activity mode={isInert ? "hidden" : "visible"}>
-                <div className="rounded-lg border border-slate-200 bg-white px-2 py-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <AnchorCard
                     parameters={editableParameters}
                     activeCrs={activeCrs}
@@ -388,7 +541,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           <TabPanel id="survey" shouldForceMount>
             {({ isInert }) => (
               <Activity mode={isInert ? "hidden" : "visible"}>
-                <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <SurveyPointsCard
                     metadata={metadata}
                     activeCrs={activeCrs}
@@ -423,6 +576,7 @@ export function Workspace({ filename, metadata, onError }: WorkspaceProps) {
           onAnchorPicked={handleAnchorPicked}
           onCancelPickAnchor={cancelPickAnchor}
           residualsPoints={lastFitPoints}
+          hasSpaces={(spacesLocal?.length ?? 0) > 0}
         />
       </section>
     </>

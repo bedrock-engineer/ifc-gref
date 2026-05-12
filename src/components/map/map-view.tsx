@@ -111,6 +111,11 @@ export interface MapViewProps {
   /** Point pairs from the most recent least-squares fit; drives the
    *  fitted-dot overlay. Null when no fit has run. */
   residualsPoints: Array<PointPair> | null;
+  /**
+   * True when the loaded file contains IfcSpace entities. Drives whether
+   * the "IFC content" section appears in the Layers panel.
+   */
+  hasSpaces: boolean;
   /** Imperative handle for parent-driven framing. */
   ref?: Ref<MapViewHandle>;
 }
@@ -130,6 +135,7 @@ export function MapView({
   onAnchorPicked,
   onCancelPickAnchor,
   residualsPoints,
+  hasSpaces,
   ref,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -137,6 +143,10 @@ export function MapView({
   const [basemap, setBasemap] = useState<BasemapId>(DEFAULT_BASEMAP_ID);
   const [overlays, setOverlays] =
     useState<Record<OverlayId, boolean>>(INITIAL_OVERLAYS);
+  const [showSpaces, setShowSpaces] = useStickyState<boolean>(
+    "ifcgref:show-spaces:v1",
+    true,
+  );
 
   const { mapRef, portals } = useMapInit(containerRef);
 
@@ -163,7 +173,7 @@ export function MapView({
     [parameters, activeCrs],
   );
   useCrsAutoZoom(mapRef, activeCrs, hasAnchor);
-  useMapOverlays(mapRef, overlaySignals);
+  useMapOverlays(mapRef, overlaySignals, { showSpaces });
 
   // Imperative camera framing — driven by Workspace event handlers
   // (solve, pick, reset, reproject, sidecar apply) plus its own
@@ -195,6 +205,7 @@ export function MapView({
     view: effectiveView,
     parameters,
     activeCrs,
+    showSpaces,
   });
   useMapLayers(mapRef, { basemap, overlays, customBasemaps });
   useAnchorPicker(mapRef, isPickingAnchor, onAnchorPicked, onCancelPickAnchor);
@@ -229,6 +240,9 @@ export function MapView({
               overlays={overlays}
               customBasemaps={customBasemaps}
               scope={scope}
+              hasSpaces={hasSpaces}
+              showSpaces={showSpaces}
+              onShowSpacesChange={setShowSpaces}
               onBasemapChange={setBasemap}
               onOverlaysChange={setOverlays}
               onAddCustomBasemap={handleAddCustomBasemap}

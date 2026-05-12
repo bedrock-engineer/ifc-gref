@@ -1,7 +1,9 @@
 import { IFCSITE, IFCSPACE } from "web-ifc";
 import { getApi } from "./api";
 import {
+  type PlacedGeometry,
   streamPlacedGeometries,
+  streamPlacedGeometriesOfTypes,
   transformDirectionToIfcFrame,
   transformPositionToIfcFrame,
 } from "./placed-geometries";
@@ -56,45 +58,15 @@ export async function extractMeshes(
       .size(),
   });
 
-  // Unlike extractFootprint, we DO render IfcSpace here. For spaces-only
-  // models (e.g. "Ruimtelijke Elementen" exports) the rooms are the entire
-  // model; filtering them out would leave us with nothing to draw. The main
-  // thread renders spaces with transparency so they don't occlude each other.
-  await streamPlacedGeometries(modelID, ({ ifcClass, matrix, vertices, indices, color }) => {
-    const vertexCount = vertices.length / 6;
-    const positions = new Float32Array(vertexCount * 3);
-    const normals = new Float32Array(vertexCount * 3);
-    for (let index = 0; index < vertexCount; index++) {
-      // Per-vertex reads into a Float32Array of unknown length. The stride
-      // invariant (length % 6 === 0, index < vertexCount) isn't visible to
-      // TS under noUncheckedIndexedAccess, and an allocation-free narrowing
-      // isn't possible in a hot loop — so assert directly.
-      /* eslint-disable @typescript-eslint/no-non-null-assertion */
-      const x = vertices[index * 6]!;
-      const y = vertices[index * 6 + 1]!;
-      const z = vertices[index * 6 + 2]!;
-      const nx = vertices[index * 6 + 3]!;
-      const ny = vertices[index * 6 + 4]!;
-      const nz = vertices[index * 6 + 5]!;
-      /* eslint-enable @typescript-eslint/no-non-null-assertion */
-      transformPositionToIfcFrame(matrix, x, y, z, positions, index * 3);
-      transformDirectionToIfcFrame(matrix, nx, ny, nz, normals, index * 3);
-    }
-
-    // Copy indices into a fresh Uint32Array backed by its own buffer so
-    // Comlink can clone it across the worker boundary cleanly (the WASM
-    // view is a live window into the heap).
-    const indexOut = new Uint32Array(indices.length);
-    indexOut.set(indices);
-
-    out.push({
-      positions,
-      normals,
-      indices: indexOut,
-      color: [color.x, color.y, color.z, color.w],
-      isSpace: ifcClass === IFCSPACE,
-      ifcClass,
-    });
+  // Two passes: the default `StreamAllMeshes` skips IFCSPACE (and other
+  // non-physical types like IFCOPENINGELEMENT) via a WASM-side filter, so a
+  // spaces-only "Ruimtelijke Elementen" export would otherwise have nothing
+  // to draw. A second pass with explicit types picks them up.
+  await streamPlacedGeometries(modelID, (placed) => {
+    emitMesh(placed, out);
+  });
+  await streamPlacedGeometriesOfTypes(modelID, [IFCSPACE], (placed) => {
+    emitMesh(placed, out);
   });
 
   console.log("[worker] extractMeshes diagnostics:", {
@@ -104,4 +76,44 @@ export async function extractMeshes(
   });
 
   return out;
+}
+
+function emitMesh(
+  { ifcClass, matrix, vertices, indices, color }: PlacedGeometry,
+  out: Array<MeshExtract>,
+): void {
+  const vertexCount = vertices.length / 6;
+  const positions = new Float32Array(vertexCount * 3);
+  const normals = new Float32Array(vertexCount * 3);
+  for (let index = 0; index < vertexCount; index++) {
+    // Per-vertex reads into a Float32Array of unknown length. The stride
+    // invariant (length % 6 === 0, index < vertexCount) isn't visible to
+    // TS under noUncheckedIndexedAccess, and an allocation-free narrowing
+    // isn't possible in a hot loop — so assert directly.
+    /* eslint-disable @typescript-eslint/no-non-null-assertion */
+    const x = vertices[index * 6]!;
+    const y = vertices[index * 6 + 1]!;
+    const z = vertices[index * 6 + 2]!;
+    const nx = vertices[index * 6 + 3]!;
+    const ny = vertices[index * 6 + 4]!;
+    const nz = vertices[index * 6 + 5]!;
+    /* eslint-enable @typescript-eslint/no-non-null-assertion */
+    transformPositionToIfcFrame(matrix, x, y, z, positions, index * 3);
+    transformDirectionToIfcFrame(matrix, nx, ny, nz, normals, index * 3);
+  }
+
+  // Copy indices into a fresh Uint32Array backed by its own buffer so
+  // Comlink can clone it across the worker boundary cleanly (the WASM
+  // view is a live window into the heap).
+  const indexOut = new Uint32Array(indices.length);
+  indexOut.set(indices);
+
+  out.push({
+    positions,
+    normals,
+    indices: indexOut,
+    color: [color.x, color.y, color.z, color.w],
+    isSpace: ifcClass === IFCSPACE,
+    ifcClass,
+  });
 }

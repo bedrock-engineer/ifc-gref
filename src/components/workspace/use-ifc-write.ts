@@ -1,10 +1,10 @@
 import { useTransition } from "react";
-import { type CrsDef, transformProjectedToWgs84 } from "#modules/crs";
+import { type CrsDef } from "#modules/crs";
 import { formatBytes } from "../../lib/format";
 import type { HelmertParams } from "#modules/helmert/solve";
 import { emitLog } from "../../lib/log";
 import { getIfc } from "../../ifc-api";
-import type { SiteReferenceSync } from "#modules/ifc/worker";
+import { writeMapConversionToWorker } from "./write-map-conversion";
 
 interface UseIfcWriteOptions {
   filename: string;
@@ -47,40 +47,21 @@ export function useIfcWrite({
       return;
     }
 
-    // IFC 4.3 spec for IfcProjectedCRS: VerticalDatum "needs to be
-    // provided, if the Name identifier does not unambiguously define the
-    // vertical datum and if the coordinate reference system is a 3D
-    // reference system." A horizontal-only EPSG (e.g. 28992) is ambiguous
-    // — refuse to write a non-compliant 3D file, push the user to either
-    // pick a vertical datum or switch to a compound CRS like 7415.
-    const verticalDatumMissing =
-      verticalDatum === null || verticalDatum.trim().length === 0;
-    if (activeCrs.kind === "projected" && verticalDatumMissing) {
-      onError(
-        "Pick a vertical datum, or switch to a compound CRS (e.g. EPSG:7415).",
-      );
-      return;
-    }
+    // Missing VerticalDatum on a horizontal-only projected CRS is an
+    // interpretive ambiguity, not wrong numbers — the SaveCard surfaces a
+    // warning and lets the user proceed deliberately. The worker handles
+    // null/empty verticalDatum (`georef/ifc4.ts:405`).
 
     startWriteTransition(async () => {
       try {
         const ifc = getIfc();
 
-        const siteReference = deriveSiteReference(activeCrs, parameters);
-
-        // For compound the vertical datum is already encoded in Name, so
-        // writing VerticalDatum on top would be redundant (and risks
-        // contradicting Name on stale state). For projected we just verified
-        // the user supplied one above.
-        const datumToWrite =
-          activeCrs.kind === "compound" ? null : verticalDatum;
-
-        await ifc.writeMapConversion(
-          activeCrs.code,
-          datumToWrite,
+        await writeMapConversionToWorker({
+          ifc,
           parameters,
-          siteReference,
-        );
+          activeCrs,
+          verticalDatum,
+        });
 
         const blob = await ifc.save();
 
@@ -111,37 +92,4 @@ function triggerDownload(blob: Blob, filename: string) {
   // Defer revoke so Safari has time to start the download (Chrome/Firefox
   // are fine immediately, but the spec doesn't guarantee it).
   setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
-}
-
-/**
- * Reverse-project (Eastings, Northings) through the target CRS to WGS84
- * so the worker can overwrite IfcSite.RefLatitude/RefLongitude. Returns
- * null if proj4 throws — the MapConversion is still authoritative in that
- * case, so we just skip the sync and log a warning.
- *
- * Elevation is taken directly from OrthogonalHeight; for most projected
- * CRS the vertical component is undefined, and this mirrors the assumption
- * the rest of the app already makes (anchor-card shows height = OrthoH).
- */
-function deriveSiteReference(
-  activeCrs: CrsDef,
-  parameters: HelmertParams,
-): SiteReferenceSync | null {
-  const wgs84 = transformProjectedToWgs84(
-    activeCrs,
-    parameters.easting,
-    parameters.northing,
-  );
-  if (wgs84.isErr()) {
-    emitLog({
-      level: "warn",
-      message: `Could not reverse-project anchor for IfcSite sync; skipping.`,
-    });
-    return null;
-  }
-  return {
-    latitude: wgs84.value.latitude,
-    longitude: wgs84.value.longitude,
-    elevation: parameters.height,
-  };
 }

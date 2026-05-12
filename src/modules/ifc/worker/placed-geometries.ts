@@ -1,3 +1,4 @@
+import type { FlatMesh } from "web-ifc";
 import { getApi } from "./api";
 
 // Helper file is purposely small — it's a thin abstraction over web-ifc's
@@ -103,6 +104,11 @@ export function transformDirectionToIfcFrame(
  *     throws at runtime.
  *   - Vertex / index buffers are live views into WASM memory; copy them
  *     before the next callback if you need to retain them.
+ *   - `StreamAllMeshes` has a WASM-side type filter that excludes
+ *     IFCSPACE / IFCOPENINGELEMENT / IFCFURNISHINGELEMENT (treated as
+ *     non-physical). To include those, use
+ *     `streamPlacedGeometriesOfTypes` with an explicit type list — which
+ *     is what `extractSpaces` and the spaces branch of `extractMeshes` do.
  *
  * Filtering by `ifcClass` (IfcSpace skip, etc.) is the caller's job.
  */
@@ -112,32 +118,59 @@ export async function streamPlacedGeometries(
 ): Promise<void> {
   const ifcAPI = await getApi();
   ifcAPI.StreamAllMeshes(modelID, (mesh) => {
-    // GetLineType is typed `any` in web-ifc; it's documented to return the
-    // numeric type constant.
-    const ifcClass = Number(ifcAPI.GetLineType(modelID, mesh.expressID));
-    const placedGeometries = mesh.geometries;
-    const count = placedGeometries.size();
-    for (let g = 0; g < count; g++) {
-      const placed = placedGeometries.get(g);
-      const geometry = ifcAPI.GetGeometry(modelID, placed.geometryExpressID);
-      const vertices = ifcAPI.GetVertexArray(
-        geometry.GetVertexData(),
-        geometry.GetVertexDataSize(),
-      );
-      const indices = ifcAPI.GetIndexArray(
-        geometry.GetIndexData(),
-        geometry.GetIndexDataSize(),
-      );
-      const color = placed.color;
-      callback({
-        expressID: mesh.expressID,
-        ifcClass,
-        matrix: asMat16(placed.flatTransformation),
-        vertices,
-        indices,
-        color: { x: color.x, y: color.y, z: color.z, w: color.w },
-      });
-      geometry.delete();
-    }
+    emitPlacedGeometries(ifcAPI, modelID, mesh, callback);
   });
+}
+
+/**
+ * Like `streamPlacedGeometries` but iterates an explicit list of IFC type
+ * constants — bypasses `StreamAllMeshes`'s default filter (which excludes
+ * IFCSPACE among others).
+ */
+export async function streamPlacedGeometriesOfTypes(
+  modelID: number,
+  types: ReadonlyArray<number>,
+  callback: (g: PlacedGeometry) => void,
+): Promise<void> {
+  const ifcAPI = await getApi();
+  // The WASM binding takes `Array<number>`; clone defensively so we don't
+  // pass a readonly view through the binding.
+  ifcAPI.StreamAllMeshesWithTypes(modelID, [...types], (mesh) => {
+    emitPlacedGeometries(ifcAPI, modelID, mesh, callback);
+  });
+}
+
+function emitPlacedGeometries(
+  ifcAPI: Awaited<ReturnType<typeof getApi>>,
+  modelID: number,
+  mesh: FlatMesh,
+  callback: (g: PlacedGeometry) => void,
+): void {
+  // GetLineType is typed `any` in web-ifc; it's documented to return the
+  // numeric type constant.
+  const ifcClass = Number(ifcAPI.GetLineType(modelID, mesh.expressID));
+  const placedGeometries = mesh.geometries;
+  const count = placedGeometries.size();
+  for (let g = 0; g < count; g++) {
+    const placed = placedGeometries.get(g);
+    const geometry = ifcAPI.GetGeometry(modelID, placed.geometryExpressID);
+    const vertices = ifcAPI.GetVertexArray(
+      geometry.GetVertexData(),
+      geometry.GetVertexDataSize(),
+    );
+    const indices = ifcAPI.GetIndexArray(
+      geometry.GetIndexData(),
+      geometry.GetIndexDataSize(),
+    );
+    const color = placed.color;
+    callback({
+      expressID: mesh.expressID,
+      ifcClass,
+      matrix: asMat16(placed.flatTransformation),
+      vertices,
+      indices,
+      color: { x: color.x, y: color.y, z: color.z, w: color.w },
+    });
+    geometry.delete();
+  }
 }

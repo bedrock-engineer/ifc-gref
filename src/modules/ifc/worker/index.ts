@@ -7,12 +7,14 @@
 export { closeModel, openModel, saveModel } from "./api";
 export { extractFootprint } from "./footprint";
 export { extractMeshes, type MeshExtract } from "./meshes";
+export { extractSpaces, type SpaceExtract } from "./spaces";
 export {
   type ExistingGeoref,
   type MapConversionStatus,
   type RawMapConversion,
   type RawProjectedCrs,
   type RawRigidOperation,
+  type RawSourceCrs,
   type SiteReferenceSync,
   writeMapConversion,
 } from "./georef";
@@ -24,4 +26,5 @@ export {
   type RawSite,
   readMetadata,
 } from "./metadata";
+export { zeroSitePlacementLocation } from "./repair";
 export { type IfcSchema } from "./schema";

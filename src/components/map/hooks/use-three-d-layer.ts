@@ -14,6 +14,7 @@ interface ThreeDState {
   view: ViewMode;
   parameters: HelmertParams | null;
   activeCrs: CrsDef | null;
+  showSpaces: boolean;
 }
 
 interface MeshOrigin {
@@ -32,13 +33,17 @@ type Meshes = Awaited<ReturnType<IfcFacade["extractMeshes"]>>;
  */
 export function useThreeDLayer(
   mapRef: RefObject<MlMap | null>,
-  { view, parameters, activeCrs }: ThreeDState,
+  { view, parameters, activeCrs, showSpaces }: ThreeDState,
 ): void {
   const threeDRef = useRef<ThreeDLayer | null>(null);
   const meshOriginRef = useRef<MeshOrigin | null>(null);
   // Cache meshes so toggling back to 3D doesn't re-fetch. The ref resets
   // naturally when Workspace remounts on file change (key={filename}).
   const meshCacheRef = useRef<Promise<Meshes> | null>(null);
+  // Read by `setup` for the layer's *initial* visibility, written by the
+  // toggle effect below so a flip during in-flight mesh load isn't lost.
+  // Kept out of the setup effect's deps so toggling doesn't re-anchor.
+  const showSpacesRef = useRef(showSpaces);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -62,6 +67,7 @@ export function useThreeDLayer(
     setup(map, {
       parameters,
       activeCrs,
+      showSpacesRef,
       threeDRef,
       meshOriginRef,
       meshCacheRef,
@@ -77,6 +83,11 @@ export function useThreeDLayer(
       cancelled = true;
     };
   }, [mapRef, view, parameters, activeCrs]);
+
+  useEffect(() => {
+    showSpacesRef.current = showSpaces;
+    threeDRef.current?.setSpacesVisible(showSpaces);
+  }, [showSpaces]);
 }
 
 function teardown(
@@ -106,6 +117,7 @@ async function setup(
   context: {
     parameters: HelmertParams;
     activeCrs: CrsDef;
+    showSpacesRef: RefObject<boolean>;
     threeDRef: RefObject<ThreeDLayer | null>;
     meshOriginRef: RefObject<MeshOrigin | null>;
     meshCacheRef: RefObject<Promise<Meshes> | null>;
@@ -135,6 +147,7 @@ async function setup(
     const layer = createThreeDLayer();
 
     context.threeDRef.current = layer;
+    layer.setSpacesVisible(context.showSpacesRef.current);
     context.meshOriginRef.current = layer.setMeshes(meshes);
 
     if (!map.getLayer(layer.layer.id)) {

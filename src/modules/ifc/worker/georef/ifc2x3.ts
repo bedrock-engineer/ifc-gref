@@ -123,6 +123,10 @@ export function readGeorefIfc2x3(
       mapProjection: null,
       mapZone: null,
       mapUnit: null,
+      // ePset has no malformed-shift problem; "absent" here means the
+      // pset's MapUnit property is missing/blank, and the IFC2X3 reader
+      // falls back to project units (not METRE — see source-card label).
+      mapUnitStatus: "absent" as const,
     };
 
   return classifyGeorefRead({
@@ -139,6 +143,9 @@ export function readGeorefIfc2x3(
       factorX: null,
       factorY: null,
       factorZ: null,
+      // ePset_MapConversion has no SourceCRS attribute — it's a free-form
+      // property set on IfcSite, not the IfcCoordinateOperation entity.
+      sourceCrs: null,
     },
   });
 }
@@ -148,6 +155,7 @@ function readRawProjectedCrsIfc2x3(
 ): RawProjectedCrs {
   // ePset_ProjectedCRS mirrors the IFC4 IfcProjectedCRS attributes as
   // free-form properties; readers in the wild may write any subset.
+  const mapUnit = optionalPropertyString(crsProperties.MapUnit);
   return {
     entityName: "ePset_ProjectedCRS",
     name: optionalPropertyString(crsProperties.Name),
@@ -156,7 +164,10 @@ function readRawProjectedCrsIfc2x3(
     verticalDatum: optionalPropertyString(crsProperties.VerticalDatum),
     mapProjection: optionalPropertyString(crsProperties.MapProjection),
     mapZone: optionalPropertyString(crsProperties.MapZone),
-    mapUnit: optionalPropertyString(crsProperties.MapUnit),
+    mapUnit,
+    // ePset has no malformed-shift problem (it's a free-form pset, not
+    // an IfcSIUnit entity reference). Only two states: present or absent.
+    mapUnitStatus: mapUnit == null ? "absent" : "explicit",
   };
 }
 

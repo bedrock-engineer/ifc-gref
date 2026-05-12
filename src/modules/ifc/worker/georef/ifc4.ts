@@ -7,6 +7,7 @@ import {
   type IfcAPI,
   Handle,
   IFCGEOMETRICREPRESENTATIONCONTEXT,
+  IFCGEOMETRICREPRESENTATIONSUBCONTEXT,
   IFCIDENTIFIER,
   IFCLABEL,
   IFCLENGTHMEASURE,
@@ -22,6 +23,8 @@ import { emitLog } from "#lib/log";
 import {
   buildHelmertFromFields,
   expressIDOf,
+  isMapUnitAbsent,
+  isMapUnitNameMissing,
   nameToMetresPerUnit,
   onDiskScaleRatio,
   rawValue,
@@ -34,6 +37,7 @@ import {
   type GeorefRead,
   type RawProjectedCrs,
   type RawRigidOperation,
+  type RawSourceCrs,
 } from "./shared";
 
 /**
@@ -55,29 +59,61 @@ export function readGeorefIfc4(
   // instances (an IFC 4.3 subtype that adds FactorX/Y/Z for non-isotropic
   // scaling). We dispatch on the entity's type tag below.
   const ids = ifcAPI.GetLineIDsWithType(modelID, IFCMAPCONVERSION, true);
-  if (ids.size() === 0) {
+  // web-ifc 0.0.77 leaves stale entries in the type index after
+  // DeleteLine + WriteLine of a fresh entity (the "repair baked
+  // placement" flow runs both in the same model session). Iterate
+  // until we find a line GetLine can actually resolve; the deleted
+  // entries return undefined.
+  const mc = firstResolvableLine(ifcAPI, modelID, ids, /* flatten */ true);
+  if (!mc) {
     // Even without a MapConversion, a stand-alone IfcProjectedCRS may
     // still exist in the file (rare; the IFC4 model is supposed to
     // attach via MapConversion). We don't pursue it — without a
     // transform there's nothing to anchor it to.
     return { ...absentGeorefRead(null), rawRigidOperation };
   }
-  const mc = ifcAPI.GetLine(modelID, ids.get(0), true);
   const target: any = mc.TargetCRS;
-  const rawProjectedCrs = readRawProjectedCrsIfc4(target);
-  // Eastings/Northings/OrthogonalHeight live in IfcProjectedCRS.MapUnit,
-  // not in the IFC project's length unit (see Revit-authored mm files
-  // that nonetheless write Eastings in metres because MapUnit=METRE).
-  const mapUnitMetresPerUnit = readMapUnitMetresPerUnit(
-    target,
-    ifcMetresPerUnit,
-  );
+  const rawSourceCrs = readRawSourceCrsIfc4(mc.SourceCRS);
   const onDiskScale = optionalNumber(mc.Scale, 1);
   const onDiskXAbs = optionalNumber(mc.XAxisAbscissa, 1);
   const onDiskXOrd = optionalNumber(mc.XAxisOrdinate, 0);
   const onDiskE = optionalNumber(mc.Eastings, 0);
   const onDiskN = optionalNumber(mc.Northings, 0);
   const onDiskH = optionalNumber(mc.OrthogonalHeight, 0);
+  // Eastings/Northings/OrthogonalHeight live in IfcProjectedCRS.MapUnit,
+  // not in the IFC project's length unit (see Revit-authored mm files
+  // that nonetheless write Eastings in metres because MapUnit=METRE).
+  // Pass on-disk Scale so a malformed MapUnit (Name=$) can be recovered
+  // by inverting the spec-conventional source-unit/MapUnit ratio.
+  const mapUnitMetresPerUnit = readMapUnitMetresPerUnit(
+    target,
+    ifcMetresPerUnit,
+    onDiskScale,
+  );
+  const mapUnitStatus = computeMapUnitStatus({
+    target,
+    mapUnitMetresPerUnit,
+    ifcMetresPerUnit,
+  });
+  const rawProjectedCrs = readRawProjectedCrsIfc4(target, mapUnitStatus);
+  if (mapUnitStatus === "absent") {
+    emitLog({
+      source: "worker",
+      message: `IfcProjectedCRS.MapUnit absent — defaulting to METRE (will write IfcSIUnit METRE on save).`,
+    });
+  } else if (mapUnitStatus === "recovered-from-scale") {
+    emitLog({
+      level: "warn",
+      source: "worker",
+      message: `IfcProjectedCRS.MapUnit malformed (Name absent) — recovered ${mapUnitMetresPerUnit} m/unit from IfcMapConversion.Scale (${onDiskScale}).`,
+    });
+  } else if (mapUnitStatus === "malformed-fallback") {
+    emitLog({
+      level: "warn",
+      source: "worker",
+      message: `IfcProjectedCRS.MapUnit malformed (Name absent) — Scale recovery failed; falling back to project length unit (${ifcMetresPerUnit} m).`,
+    });
+  }
 
   // IFC 4.3 IfcMapConversionScaled: per-spec, effective per-axis scale is
   // Scale × Factor<axis>. FactorX/Y/Z default to 1 when the entity is plain
@@ -126,6 +162,7 @@ export function readGeorefIfc4(
         factorX: isScaled ? factorX : null,
         factorY: isScaled ? factorY : null,
         factorZ: isScaled ? factorZ : null,
+        sourceCrs: rawSourceCrs,
       },
     }),
     rawRigidOperation,
@@ -144,10 +181,10 @@ function readRigidOperationIfc4(
   modelID: number,
 ): RawRigidOperation | null {
   const ids = ifcAPI.GetLineIDsWithType(modelID, IFCRIGIDOPERATION);
-  if (ids.size() === 0) {
+  const op = firstResolvableLine(ifcAPI, modelID, ids, /* flatten */ true);
+  if (!op) {
     return null;
   }
-  const op = ifcAPI.GetLine(modelID, ids.get(0), true);
   const heightRaw = rawValue(op.Height);
   const target: any = op.TargetCRS;
   const targetCrsName = target ? optionalString(target.Name) : null;
@@ -164,7 +201,36 @@ function readRigidOperationIfc4(
   return result;
 }
 
-function readRawProjectedCrsIfc4(target: any): RawProjectedCrs | null {
+/**
+ * Read the IfcGeometricRepresentationContext (or rare SubContext) that
+ * IfcMapConversion.SourceCRS points to. The link is otherwise invisible in
+ * the source card, and matters when a file carries multiple contexts
+ * (Model/Plan/Body) — MapConversion is attached to exactly one of them.
+ *
+ * `source` is the flattened SourceCRS attribute from `GetLine(..., true)`.
+ * Per IfcCoordinateReferenceSystemSelect the value is *normally* an
+ * IfcGeometricRepresentationContext; we don't try to handle IfcGeographicCRS
+ * here (rare, not used by any tool that authors a MapConversion).
+ */
+function readRawSourceCrsIfc4(source: any): RawSourceCrs | null {
+  if (!source) {
+    return null;
+  }
+  const entityName =
+    source.type === IFCGEOMETRICREPRESENTATIONSUBCONTEXT
+      ? "IfcGeometricRepresentationSubContext"
+      : "IfcGeometricRepresentationContext";
+  return {
+    entityName,
+    contextIdentifier: optionalString(source.ContextIdentifier),
+    contextType: optionalString(source.ContextType),
+  };
+}
+
+function readRawProjectedCrsIfc4(
+  target: any,
+  mapUnitStatus: RawProjectedCrs["mapUnitStatus"],
+): RawProjectedCrs | null {
   if (!target) {
     return null;
   }
@@ -177,7 +243,38 @@ function readRawProjectedCrsIfc4(target: any): RawProjectedCrs | null {
     mapProjection: optionalString(target.MapProjection),
     mapZone: optionalString(target.MapZone),
     mapUnit: readMapUnitLabel(target.MapUnit),
+    mapUnitStatus,
   };
+}
+
+/**
+ * Resolve `mapUnitStatus` from the on-disk MapUnit shape plus the
+ * recovered metres-per-unit factor. Discriminates the four cases the
+ * source-card badge needs to distinguish:
+ *
+ *  - MapUnit attribute absent → `'absent'` (reader defaulted to METRE)
+ *  - MapUnit present, Name empty, recovery yielded ≠ project unit
+ *    → `'recovered-from-scale'` (algebraic Scale-inversion succeeded)
+ *  - MapUnit present, Name empty, recovery yielded == project unit
+ *    → `'malformed-fallback'` (recovery couldn't disambiguate)
+ *  - Otherwise → `'explicit'` (mapUnit string is the source of truth,
+ *    whether recognised or not; UI displays it verbatim)
+ */
+function computeMapUnitStatus(args: {
+  target: any;
+  mapUnitMetresPerUnit: number;
+  ifcMetresPerUnit: number;
+}): RawProjectedCrs["mapUnitStatus"] {
+  const { target, mapUnitMetresPerUnit, ifcMetresPerUnit } = args;
+  if (isMapUnitAbsent(target)) {
+    return "absent";
+  }
+  if (isMapUnitNameMissing(target)) {
+    return mapUnitMetresPerUnit !== ifcMetresPerUnit
+      ? "recovered-from-scale"
+      : "malformed-fallback";
+  }
+  return "explicit";
 }
 
 /**
@@ -238,89 +335,46 @@ export function writeGeorefIfc4(
   parameters: HelmertParams,
   ifcMetresPerUnit: number,
 ): void {
-  // Snapshot the file's MapUnit *before* removeExistingGeorefIfc4
-  // deletes the IfcProjectedCRS that referenced it. The entity itself
-  // (an IfcSIUnit or IfcConversionBasedUnit, typically shared with
-  // IfcUnitAssignment) is not cascade-deleted; we re-reference it on
-  // the new IfcProjectedCRS by handle.
-  const preservedMapUnit = findPreservableMapUnit(ifcAPI, modelID);
-  removeExistingGeorefIfc4(ifcAPI, modelID);
-
-  const contextIds = ifcAPI.GetLineIDsWithType(
-    modelID,
-    IFCGEOMETRICREPRESENTATIONCONTEXT,
-  );
-  if (contextIds.size() === 0) {
-    const message = "No IfcGeometricRepresentationContext found in model";
-    emitLog({ level: "error", source: "worker", message });
-    throw new Error(message);
-  }
-  const sourceContextID = contextIds.get(0);
-
-  const crsName = `EPSG:${epsgCode}`;
-  const verticalDatumValue =
-    verticalDatum && verticalDatum.length > 0
-      ? ifcAPI.CreateIfcType(modelID, IFCIDENTIFIER, verticalDatum)
-      : null;
-
-  const { mapUnitRef, mapUnitMetresPerUnit } = resolveMapUnitForWrite(
+  const setup = setupIfc4GeorefWrite(
     ifcAPI,
     modelID,
-    preservedMapUnit,
-  );
-
-  // IfcProjectedCRS(Name, Description, GeodeticDatum, VerticalDatum,
-  //                 MapProjection, MapZone, MapUnit)
-  const projectedCRS = ifcAPI.CreateIfcEntity(
-    modelID,
-    IFCPROJECTEDCRS,
-    ifcAPI.CreateIfcType(modelID, IFCLABEL, crsName),
-    null,
-    null,
-    verticalDatumValue,
-    null,
-    null,
-    mapUnitRef,
-  );
-
-  // IfcMapConversion(SourceCRS, TargetCRS, Eastings, Northings,
-  //                  OrthogonalHeight, XAxisAbscissa, XAxisOrdinate, Scale)
-  const { xAxisAbscissa, xAxisOrdinate } = rotationToAxisPair(
+    epsgCode,
+    verticalDatum,
     parameters.rotation,
   );
 
-  // Writing plain IfcMapConversion drops the per-axis distinction. On
-  // pre-4.3 the fitter uses solveHelmertJoint which sets all three scales
-  // equal, so nothing is lost. On 4.3 with anisotropic params (from
-  // solveHelmertSplit or from reading an IfcMapConversionScaled file), the
-  // schema-aware writer in writeMapConversion dispatches to a separate
-  // IfcMapConversionScaled writer instead of this function.
+  // Plain IfcMapConversion packs unit ratio × geometric scale into Scale.
+  // Routed here only for isotropic params (xScale = yScale = zScale): on
+  // pre-4.3 solveHelmertJoint sets all three equal; on 4.3 with anisotropic
+  // params the dispatcher in writeMapConversion picks the Scaled writer.
   const onDiskScale =
     parameters.xScale
-    * onDiskScaleRatio(ifcMetresPerUnit, mapUnitMetresPerUnit);
+    * onDiskScaleRatio(ifcMetresPerUnit, setup.mapUnitMetresPerUnit);
 
+  // IfcMapConversion(SourceCRS, TargetCRS, Eastings, Northings,
+  //                  OrthogonalHeight, XAxisAbscissa, XAxisOrdinate, Scale)
   const mapConversion = ifcAPI.CreateIfcEntity(
     modelID,
     IFCMAPCONVERSION,
-    new Handle(sourceContextID),
-    projectedCRS,
+    new Handle(setup.sourceContextID),
+    setup.projectedCRS,
     ifcAPI.CreateIfcType(
       modelID,
       IFCLENGTHMEASURE,
-      parameters.easting / mapUnitMetresPerUnit,
+      parameters.easting / setup.mapUnitMetresPerUnit,
     ),
     ifcAPI.CreateIfcType(
       modelID,
       IFCLENGTHMEASURE,
-      parameters.northing / mapUnitMetresPerUnit,
+      parameters.northing / setup.mapUnitMetresPerUnit,
     ),
     ifcAPI.CreateIfcType(
       modelID,
       IFCLENGTHMEASURE,
-      parameters.height / mapUnitMetresPerUnit,
+      parameters.height / setup.mapUnitMetresPerUnit,
     ),
-    ifcAPI.CreateIfcType(modelID, IFCREAL, xAxisAbscissa),
-    ifcAPI.CreateIfcType(modelID, IFCREAL, xAxisOrdinate),
+    ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisAbscissa),
+    ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisOrdinate),
     ifcAPI.CreateIfcType(modelID, IFCREAL, onDiskScale),
   );
 
@@ -349,6 +403,88 @@ export function writeGeorefIfc4Scaled(
   parameters: HelmertParams,
   ifcMetresPerUnit: number,
 ): void {
+  const setup = setupIfc4GeorefWrite(
+    ifcAPI,
+    modelID,
+    epsgCode,
+    verticalDatum,
+    parameters.rotation,
+  );
+
+  // Per spec, effective per-axis scale on disk is Scale × Factor<axis>.
+  // Scale carries the source-unit → MapUnit ratio (no geometric component);
+  // FactorX/Y/Z carry the dimensionless geometric scales (typically 1.0).
+  const onDiskScale = onDiskScaleRatio(
+    ifcMetresPerUnit,
+    setup.mapUnitMetresPerUnit,
+  );
+
+  // IfcMapConversionScaled(SourceCRS, TargetCRS, Eastings, Northings,
+  //                        OrthogonalHeight, XAxisAbscissa, XAxisOrdinate,
+  //                        Scale, FactorX, FactorY, FactorZ)
+  const mapConversion = ifcAPI.CreateIfcEntity(
+    modelID,
+    IFCMAPCONVERSIONSCALED,
+    new Handle(setup.sourceContextID),
+    setup.projectedCRS,
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.easting / setup.mapUnitMetresPerUnit,
+    ),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.northing / setup.mapUnitMetresPerUnit,
+    ),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.height / setup.mapUnitMetresPerUnit,
+    ),
+    ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisAbscissa),
+    ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisOrdinate),
+    ifcAPI.CreateIfcType(modelID, IFCREAL, onDiskScale),
+    ifcAPI.CreateIfcType(modelID, IFCREAL, parameters.xScale),
+    ifcAPI.CreateIfcType(modelID, IFCREAL, parameters.yScale),
+    ifcAPI.CreateIfcType(modelID, IFCREAL, parameters.zScale),
+  );
+
+  ifcAPI.WriteLine(modelID, mapConversion);
+}
+
+interface Ifc4WriteSetup {
+  sourceContextID: number;
+  projectedCRS: any;
+  mapUnitMetresPerUnit: number;
+  xAxisAbscissa: number;
+  xAxisOrdinate: number;
+}
+
+/**
+ * Shared prelude for writeGeorefIfc4 / writeGeorefIfc4Scaled: snapshot the
+ * file's MapUnit, delete existing georef entities, locate the source
+ * IfcGeometricRepresentationContext, build the new IfcProjectedCRS, and
+ * resolve the axis pair from the rotation. The two writers differ only in
+ * the MapConversion entity they build with this setup — that logic stays
+ * in each writer so the entity shape (positional CreateIfcEntity args,
+ * spec mapping comment) stays line-aligned with its definition.
+ *
+ * Throws if no IfcGeometricRepresentationContext exists; every IFC4 model
+ * is required to carry at least one, so there's nothing to recover to.
+ */
+function setupIfc4GeorefWrite(
+  ifcAPI: IfcAPI,
+  modelID: number,
+  epsgCode: number,
+  verticalDatum: string | null,
+  rotation: number,
+): Ifc4WriteSetup {
+  // Snapshot the file's MapUnit *before* removeExistingGeorefIfc4 deletes
+  // the IfcProjectedCRS that referenced it. The entity itself (an
+  // IfcSIUnit or IfcConversionBasedUnit, typically shared with
+  // IfcUnitAssignment) is not cascade-deleted; we re-reference it on the
+  // new IfcProjectedCRS by handle.
   const preservedMapUnit = findPreservableMapUnit(ifcAPI, modelID);
   removeExistingGeorefIfc4(ifcAPI, modelID);
 
@@ -363,7 +499,6 @@ export function writeGeorefIfc4Scaled(
   }
   const sourceContextID = contextIds.get(0);
 
-  const crsName = `EPSG:${epsgCode}`;
   const verticalDatumValue =
     verticalDatum && verticalDatum.length > 0
       ? ifcAPI.CreateIfcType(modelID, IFCIDENTIFIER, verticalDatum)
@@ -375,10 +510,12 @@ export function writeGeorefIfc4Scaled(
     preservedMapUnit,
   );
 
+  // IfcProjectedCRS(Name, Description, GeodeticDatum, VerticalDatum,
+  //                 MapProjection, MapZone, MapUnit)
   const projectedCRS = ifcAPI.CreateIfcEntity(
     modelID,
     IFCPROJECTEDCRS,
-    ifcAPI.CreateIfcType(modelID, IFCLABEL, crsName),
+    ifcAPI.CreateIfcType(modelID, IFCLABEL, `EPSG:${epsgCode}`),
     null,
     null,
     verticalDatumValue,
@@ -387,47 +524,15 @@ export function writeGeorefIfc4Scaled(
     mapUnitRef,
   );
 
-  const { xAxisAbscissa, xAxisOrdinate } = rotationToAxisPair(
-    parameters.rotation,
-  );
+  const { xAxisAbscissa, xAxisOrdinate } = rotationToAxisPair(rotation);
 
-  // Per spec, effective per-axis scale on disk is Scale × Factor<axis>.
-  // Scale carries the source-unit → MapUnit ratio (no geometric component);
-  // FactorX/Y/Z carry the dimensionless geometric scales (typically 1.0).
-  const onDiskScale = onDiskScaleRatio(ifcMetresPerUnit, mapUnitMetresPerUnit);
-
-  // IfcMapConversionScaled(SourceCRS, TargetCRS, Eastings, Northings,
-  //                        OrthogonalHeight, XAxisAbscissa, XAxisOrdinate,
-  //                        Scale, FactorX, FactorY, FactorZ)
-  const mapConversion = ifcAPI.CreateIfcEntity(
-    modelID,
-    IFCMAPCONVERSIONSCALED,
-    new Handle(sourceContextID),
+  return {
+    sourceContextID,
     projectedCRS,
-    ifcAPI.CreateIfcType(
-      modelID,
-      IFCLENGTHMEASURE,
-      parameters.easting / mapUnitMetresPerUnit,
-    ),
-    ifcAPI.CreateIfcType(
-      modelID,
-      IFCLENGTHMEASURE,
-      parameters.northing / mapUnitMetresPerUnit,
-    ),
-    ifcAPI.CreateIfcType(
-      modelID,
-      IFCLENGTHMEASURE,
-      parameters.height / mapUnitMetresPerUnit,
-    ),
-    ifcAPI.CreateIfcType(modelID, IFCREAL, xAxisAbscissa),
-    ifcAPI.CreateIfcType(modelID, IFCREAL, xAxisOrdinate),
-    ifcAPI.CreateIfcType(modelID, IFCREAL, onDiskScale),
-    ifcAPI.CreateIfcType(modelID, IFCREAL, parameters.xScale),
-    ifcAPI.CreateIfcType(modelID, IFCREAL, parameters.yScale),
-    ifcAPI.CreateIfcType(modelID, IFCREAL, parameters.zScale),
-  );
-
-  ifcAPI.WriteLine(modelID, mapConversion);
+    mapUnitMetresPerUnit,
+    xAxisAbscissa,
+    xAxisOrdinate,
+  };
 }
 
 /**
@@ -473,10 +578,10 @@ function findPreservableMapUnit(
   modelID: number,
 ): { expressID: number; metresPerUnit: number } | null {
   const ids = ifcAPI.GetLineIDsWithType(modelID, IFCMAPCONVERSION, true);
-  if (ids.size() === 0) {
+  const mc = firstResolvableLine(ifcAPI, modelID, ids, /* flatten */ true);
+  if (!mc) {
     return null;
   }
-  const mc = ifcAPI.GetLine(modelID, ids.get(0), true);
   const target = mc.TargetCRS;
   const mapUnit = target?.MapUnit;
   if (!mapUnit) {
@@ -525,4 +630,36 @@ function resolveMapUnitForWrite(
     { type: 3, value: "METRE" },
   );
   return { mapUnitRef: metreUnit, mapUnitMetresPerUnit: 1 };
+}
+
+/**
+ * Iterate a type-index result and return the first entity GetLine can
+ * actually resolve. web-ifc 0.0.77 leaves stale entries in the type
+ * index after DeleteLine in the same model session — the type-index
+ * IDs survive, but `GetLine` returns undefined for them. Naive
+ * `ids.get(0)` followed by `.TargetCRS` then crashes with "Cannot read
+ * properties of undefined (reading 'TargetCRS')". Same workaround for
+ * write-then-read flows (baked-origin repair) and read paths in
+ * general — cheap and safe everywhere.
+ */
+function firstResolvableLine(
+  ifcAPI: IfcAPI,
+  modelID: number,
+  ids: { size: () => number; get: (index: number) => number },
+  flatten: boolean,
+): any {
+  const total = ids.size();
+  for (let index = 0; index < total; index++) {
+    const id = ids.get(index);
+    let entity: any;
+    try {
+      entity = ifcAPI.GetLine(modelID, id, flatten);
+    } catch {
+      continue;
+    }
+    if (entity) {
+      return entity;
+    }
+  }
+  return null;
 }

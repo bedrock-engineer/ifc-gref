@@ -3,12 +3,19 @@ import maplibregl, { type Marker, type Map as MlMap } from "maplibre-gl";
 import { type RefObject, useEffect, useRef } from "react";
 
 import { isValidLatLon } from "#lib/validators";
-import type { MapOverlaySignals } from "#state/georef-status/types";
+import type {
+  MapOverlaySignals,
+  SpaceOverlay,
+} from "#state/georef-status/types";
 import {
   ACCENT_COLOR,
   FOOTPRINT_FILL_LAYER_ID,
   FOOTPRINT_LINE_LAYER_ID,
   FOOTPRINT_SOURCE_ID,
+  SPACES_COLOR,
+  SPACES_FILL_LAYER_ID,
+  SPACES_LINE_LAYER_ID,
+  SPACES_SOURCE_ID,
 } from "../style";
 import { runWhenMapReady } from "./run-when-map-ready";
 
@@ -28,9 +35,11 @@ const MARKER_FG = "#111";
 export function useMapOverlays(
   mapRef: RefObject<MlMap | null>,
   signals: MapOverlaySignals,
+  options: { showSpaces: boolean },
 ): void {
   const mapConversionMarkerRef = useRef<Marker | null>(null);
   const siteMarkerRef = useRef<Marker | null>(null);
+  const { showSpaces } = options;
 
   useEffect(() => {
     const map = mapRef.current;
@@ -47,8 +56,9 @@ export function useMapOverlays(
       );
       syncMarker(map, siteMarkerRef, signals.siteReference, "siteReference");
       syncFootprint(map, signals.footprint);
+      syncSpaces(map, showSpaces ? signals.spaces : null);
     });
-  }, [mapRef, signals]);
+  }, [mapRef, signals, showSpaces]);
 
   // Tear down markers on unmount. Sources/layers live on the map and are
   // disposed via map.remove() in useMapInit's cleanup.
@@ -173,6 +183,27 @@ function createGlyph(source: "mapConversion" | "siteReference"): SVGSVGElement {
   return svg;
 }
 
+/**
+ * Return `ring` with a closing vertex appended if the first and last points
+ * differ. GeoJSON polygons require closed rings; the projection upstream
+ * doesn't enforce that.
+ */
+function closeRing(
+  ring: ReadonlyArray<[number, number]>,
+): Array<[number, number]> {
+  const copy = [...ring];
+  const first = copy[0];
+  const last = copy.at(-1);
+  if (first && last) {
+    const [fx, fy] = first;
+    const [lx, ly] = last;
+    if (fx !== lx || fy !== ly) {
+      copy.push([fx, fy]);
+    }
+  }
+  return copy;
+}
+
 function syncFootprint(
   map: MlMap,
   footprint: Array<[number, number]> | null,
@@ -181,16 +212,7 @@ function syncFootprint(
   const existing = map.getSource<maplibregl.GeoJSONSource>(FOOTPRINT_SOURCE_ID);
 
   if (hasFootprint) {
-    const ring = [...footprint];
-    const first = ring[0];
-    const last = ring.at(-1);
-    if (first && last) {
-      const [fx, fy] = first;
-      const [lx, ly] = last;
-      if (fx !== lx || fy !== ly) {
-        ring.push([fx, fy]);
-      }
-    }
+    const ring = closeRing(footprint);
     const data: GeoJSON.Feature<GeoJSON.Polygon> = {
       type: "Feature",
       properties: {},
@@ -222,6 +244,77 @@ function syncFootprint(
       map.removeLayer(FOOTPRINT_LINE_LAYER_ID);
     }
     map.removeSource(FOOTPRINT_SOURCE_ID);
+  }
+}
+
+function syncSpaces(
+  map: MlMap,
+  spaces: ReadonlyArray<SpaceOverlay> | null,
+): void {
+  const hasSpaces = spaces != null && spaces.length > 0;
+  const existing = map.getSource<maplibregl.GeoJSONSource>(SPACES_SOURCE_ID);
+
+  if (hasSpaces) {
+    const features: Array<GeoJSON.Feature<GeoJSON.Polygon>> = [];
+    for (const space of spaces) {
+      if (space.polygon.length < 3) {
+        continue;
+      }
+      features.push({
+        type: "Feature",
+        properties: {
+          expressID: space.expressID,
+          name: space.name,
+          longName: space.longName,
+        },
+        geometry: { type: "Polygon", coordinates: [closeRing(space.polygon)] },
+      });
+    }
+    const data: GeoJSON.FeatureCollection<GeoJSON.Polygon> = {
+      type: "FeatureCollection",
+      features,
+    };
+
+    if (existing) {
+      existing.setData(data);
+    } else {
+      map.addSource(SPACES_SOURCE_ID, { type: "geojson", data });
+      // Inserted below the footprint layers so the footprint outline reads
+      // on top of the per-room fills.
+      const beforeId = map.getLayer(FOOTPRINT_FILL_LAYER_ID)
+        ? FOOTPRINT_FILL_LAYER_ID
+        : undefined;
+      map.addLayer(
+        {
+          id: SPACES_FILL_LAYER_ID,
+          type: "fill",
+          source: SPACES_SOURCE_ID,
+          paint: { "fill-color": SPACES_COLOR, "fill-opacity": 0.12 },
+        },
+        beforeId,
+      );
+      map.addLayer(
+        {
+          id: SPACES_LINE_LAYER_ID,
+          type: "line",
+          source: SPACES_SOURCE_ID,
+          paint: {
+            "line-color": SPACES_COLOR,
+            "line-width": 1,
+            "line-opacity": 0.7,
+          },
+        },
+        beforeId,
+      );
+    }
+  } else if (existing) {
+    if (map.getLayer(SPACES_LINE_LAYER_ID)) {
+      map.removeLayer(SPACES_LINE_LAYER_ID);
+    }
+    if (map.getLayer(SPACES_FILL_LAYER_ID)) {
+      map.removeLayer(SPACES_FILL_LAYER_ID);
+    }
+    map.removeSource(SPACES_SOURCE_ID);
   }
 }
 

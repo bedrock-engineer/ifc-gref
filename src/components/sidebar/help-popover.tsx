@@ -18,7 +18,7 @@ export function CardHelpButton({ label, children }: CardHelpButtonProps) {
     <DialogTrigger>
       <Button
         aria-label={label}
-        className="flex size-5 cursor-pointer items-center justify-center rounded text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-700 data-focus-visible:ring-2 data-focus-visible:ring-slate-500"
+        className="relative flex size-5 cursor-pointer items-center justify-center rounded text-slate-400 outline-none transition-[color,background-color,scale] duration-100 before:absolute before:-inset-y-2 before:-left-2 before:right-0 before:content-[''] hover:bg-slate-100 hover:text-slate-700 data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-pressed:scale-[0.96]"
       >
         <QuestionMarkCircledIcon />
       </Button>

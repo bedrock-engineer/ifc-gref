@@ -6,7 +6,7 @@ const BASE =
   "group cursor-pointer outline-none data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-disabled:cursor-not-allowed data-disabled:opacity-50";
 
 const INDICATOR =
-  "flex size-3 shrink-0 items-center justify-center rounded-full border border-slate-400 group-data-selected:border-slate-900";
+  "flex size-3 shrink-0 items-center justify-center rounded-full border border-slate-400 transition-colors duration-150 group-data-hovered:border-slate-600 group-data-selected:border-slate-900";
   
 interface RadioButtonProps extends Omit<RadioProps, "children" | "className"> {
   /** Outer container classes — layout, spacing, and selected-state chrome. */

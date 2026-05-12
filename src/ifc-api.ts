@@ -65,6 +65,9 @@ export function getIfc(): IfcFacade {
     async extractMeshes() {
       return api.extractMeshes(requireModel());
     },
+    async extractSpaces() {
+      return api.extractSpaces(requireModel());
+    },
     async writeMapConversion(epsgCode, verticalDatum, parameters, siteReference) {
       await api.writeMapConversion(
         requireModel(),
@@ -73,6 +76,9 @@ export function getIfc(): IfcFacade {
         parameters,
         siteReference,
       );
+    },
+    async zeroSitePlacementLocation() {
+      await api.zeroSitePlacementLocation(requireModel());
     },
     async save() {
       return api.saveModel(requireModel());

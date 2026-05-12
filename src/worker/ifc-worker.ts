@@ -4,10 +4,12 @@ import {
   closeModel,
   extractFootprint,
   extractMeshes,
+  extractSpaces,
   openModel,
   readMetadata,
   saveModel,
   writeMapConversion,
+  zeroSitePlacementLocation,
 } from '#modules/ifc/worker'
 
 /**
@@ -24,7 +26,9 @@ const api = {
   readMetadata,
   extractFootprint,
   extractMeshes,
+  extractSpaces,
   writeMapConversion,
+  zeroSitePlacementLocation,
   saveModel,
   closeModel,
   setLogSink,

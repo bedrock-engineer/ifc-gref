@@ -1,14 +1,14 @@
 import {
   GitHubLogoIcon,
-  QuestionMarkCircledIcon,
+  //  QuestionMarkCircledIcon
 } from "@radix-ui/react-icons";
 import {
-  Button as AriaButton,
-  Dialog,
-  DialogTrigger,
+  // Button as AriaButton,
+  // Dialog,
+  // DialogTrigger,
   FileTrigger,
-  OverlayArrow,
-  Popover,
+  // OverlayArrow,
+  // Popover,
 } from "react-aria-components";
 import { Button } from "./input/button";
 
@@ -31,11 +31,44 @@ export function Header({ filename, onFile }: HeaderProps) {
           IFC Georeferencer
         </h1>
 
-        {filename && <p className="text-xs text-slate-500">{filename}</p>}
+        {filename ? (
+          <p className="text-xs text-slate-500">File: {filename}</p>
+        ) : (
+          <p className="text-[11px] text-slate-400">
+            By{" "}
+            <a
+              href="https://bedrock.engineer"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="rounded-sm outline-none hover:text-slate-600 underline focus-visible:ring-2 gap-0.5 focus-visible:ring-slate-500"
+            >
+              <img
+                src="/bedrock.png"
+                alt="Bedrock.engineer logo"
+                className="h-2.5 w-2.5 mr-0.5 inline-block"
+              />
+              Bedrock.engineer
+            </a>
+            {" for "}
+            <a
+              href="https://www.buildingsmart.nl"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="rounded-sm outline-none hover:text-slate-600 underline focus-visible:ring-2 gap-0.5 focus-visible:ring-slate-500"
+            >
+              <img
+                src="/buildingsmart.png"
+                alt="buildingSMART NL logo"
+                className="h-2.5 w-2.5 mr-0.5 inline-block"
+              />
+              buildingSMART NL
+            </a>
+          </p>
+        )}
       </div>
 
       <div className="flex items-center gap-1">
-        <ShortcutsPopover />
+        {/* <ShortcutsPopover /> */}
 
         <a
           href={REPO_URL}
@@ -65,7 +98,7 @@ export function Header({ filename, onFile }: HeaderProps) {
   );
 }
 
-function ShortcutsPopover() {
+/* function ShortcutsPopover() {
   return (
     <DialogTrigger>
       <AriaButton
@@ -99,13 +132,13 @@ function ShortcutsPopover() {
           <div className="space-y-3 text-xs">
             <section>
               <h3 className="mb-1 font-medium text-slate-900">Number fields</h3>
-              
+
               <ShortcutRow keys={["↑", "↓"]} desc="± step" />
-              
+
               <ShortcutRow keys={["PgUp", "PgDn"]} desc="± 10× step" />
-              
+
               <ShortcutRow keys={["Home", "End"]} desc="Min / max" />
-              
+
               <ShortcutRow keys={["Scroll"]} desc="± step when focused" />
             </section>
 
@@ -141,4 +174,4 @@ function ShortcutRow({ keys, desc }: ShortcutRowProps) {
       <span className="text-slate-600">{desc}</span>
     </div>
   );
-}
+} */

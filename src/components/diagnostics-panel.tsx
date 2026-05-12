@@ -1,3 +1,4 @@
+import { TriangleDownIcon } from "@radix-ui/react-icons";
 import { useSyncExternalStore } from "react";
 import {
   Button as AriaButton,
@@ -5,13 +6,13 @@ import {
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
-import { Button } from "./input/button";
 import {
   clearLog,
   getLogEntries,
   subscribeLog,
   type LogEntry,
 } from "../lib/log";
+import { Button } from "./input/button";
 
 const style = { gridArea: "diagnostics" };
 
@@ -25,18 +26,21 @@ export function DiagnosticsPanel() {
   const entries = useSyncExternalStore(subscribeLog, getLogEntries);
 
   return (
-    <Disclosure style={style} className="border-t border-slate-200 bg-slate-50 text-xs">
+    <Disclosure
+      style={style}
+      className="border-t border-slate-200 bg-slate-50 text-xs"
+    >
       <Heading className="m-0">
         <AriaButton
           slot="trigger"
-          className="flex w-full items-center justify-between px-3 py-1.5 text-left font-medium text-slate-700 outline-none hover:bg-slate-100 focus-visible:bg-slate-100"
+          className="flex w-full items-center justify-between px-3 py-1.5 text-left font-medium text-slate-700 outline-none hover:bg-slate-100 focus-visible:bg-slate-100 group"
         >
           <span>Diagnostics ({entries.length})</span>
           <span
             aria-hidden
-            className="text-slate-400 group-aria-expanded:rotate-180"
+            className="text-slate-400 group-aria-expanded:rotate-180 transition-transform"
           >
-            ▾
+            <TriangleDownIcon />
           </span>
         </AriaButton>
       </Heading>

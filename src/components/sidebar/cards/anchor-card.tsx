@@ -162,26 +162,15 @@ export function AnchorCard({
       </div>
 
       <div className="flex gap-2">
-        {isPicking ? (
-          <Button
-            variant="warning"
-            size="sm"
-            onPress={onCancelPick}
-            className="flex-1"
-          >
-            Cancel pick
-          </Button>
-        ) : (
-          <Button
-            variant="secondary"
-            size="sm"
-            onPress={onStartPick}
-            isDisabled={pickDisabled}
-            className="flex-1"
-          >
-            Pick on map
-          </Button>
-        )}
+        <Button
+          variant={isPicking ? "warning" : "secondary"}
+          size="sm"
+          onPress={isPicking ? onCancelPick : onStartPick}
+          isDisabled={!isPicking && pickDisabled}
+          className="flex-1"
+        >
+          {isPicking ? "Cancel pick" : "Pick on map"}
+        </Button>
 
         <Button
           variant="secondary"

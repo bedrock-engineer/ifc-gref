@@ -48,6 +48,20 @@ export function findingToLogMessage(finding: Finding): string {
         `anchor manually, or switch CRS.`
       );
     }
+    case "double-baked-origin": {
+      const { x, y, z } = finding.origin;
+      const where =
+        `EPSG:${finding.crsCode}` +
+        (finding.areaOfUse ? ` (${finding.areaOfUse})` : "");
+      return (
+        `IfcSite.ObjectPlacement at (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(1)}) m ` +
+        `looks like baked-in projected coordinates *and* an IfcMapConversion ` +
+        `is present that carries the same offset — applying the Helmert to ` +
+        `the baked local origin places geometry outside the area of use for ` +
+        `${where} (double-translation). The offset belongs in ` +
+        `IfcMapConversion only; zero IfcSite.ObjectPlacement to resolve.`
+      );
+    }
     case "grid-degraded": {
       return (
         `Precision grid for EPSG:${finding.crsCode} failed to load — ` +
@@ -89,6 +103,13 @@ export function derivePickBlockedReason(
  * Reason the Save button is blocked, if any. Today only the
  * grid-degraded finding blocks save — keep the function small and let
  * future block-reasons accumulate here as branches.
+ *
+ * Blocking is reserved for *wrong numbers*: grid-degraded means
+ * coordinates land ~170 m off and the user can't tell from looking at
+ * the file. Interpretive ambiguities (e.g. missing VerticalDatum on a
+ * horizontal-only CRS) go through `deriveSaveWarning` instead — the
+ * numbers are what the user typed, only the recipient's interpretation
+ * is at risk.
  */
 export function deriveSaveBlockedReason(view: GeorefView): string | null {
   const degraded = view.findings.find((f) => f.kind === "grid-degraded");
@@ -99,4 +120,30 @@ export function deriveSaveBlockedReason(view: GeorefView): string | null {
     );
   }
   return null;
+}
+
+/**
+ * Non-blocking warning shown above the Save button. Today: saving with a
+ * horizontal-only projected CRS and no VerticalDatum produces a file
+ * whose OrthogonalHeight is interpretively ambiguous (recipients have to
+ * guess NAP / ellipsoidal / local). We surface this so the user can fix
+ * it before saving, but don't refuse the write — they may have chosen
+ * the CRS deliberately.
+ */
+export function deriveSaveWarning(
+  activeCrs: CrsDef | null,
+  verticalDatum: string | null,
+): string | null {
+  if (activeCrs?.kind !== "projected") {
+    return null;
+  }
+  const missing = verticalDatum === null || verticalDatum.trim().length === 0;
+  if (!missing) {
+    return null;
+  }
+  return (
+    "Saving without a vertical datum. Recipients may misinterpret " +
+    "OrthogonalHeight. Pick a vertical datum, or use a compound CRS " +
+    "(e.g. EPSG:7415)."
+  );
 }

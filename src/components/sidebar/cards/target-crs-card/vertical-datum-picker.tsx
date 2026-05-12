@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
 import {
   Button,
   ComboBox,
@@ -12,11 +12,12 @@ import {
   Virtualizer,
   type Key,
 } from "react-aria-components";
+
+import { useManifestSnapshot } from "#lib/use-crs-manifest";
 import {
   filterVerticalDatumOptions,
   type VerticalDatumOption,
 } from "#modules/crs";
-import { useManifestSnapshot } from "#lib/use-crs-manifest";
 
 interface VerticalDatumPickerProps {
   /** Seed for the input on mount. Subsequent prop changes are ignored —
@@ -27,7 +28,6 @@ interface VerticalDatumPickerProps {
   /** Fires when the user commits a value (Enter / blur / dropdown select).
    * Empty/whitespace-only input becomes null. */
   onCommit: (value: string | null) => void;
-  fromFile: boolean;
 }
 
 /**
@@ -45,7 +45,6 @@ interface VerticalDatumPickerProps {
 export function VerticalDatumPicker({
   initialValue,
   onCommit,
-  fromFile,
 }: VerticalDatumPickerProps) {
   const allOptions = useManifestSnapshot().vertical;
   const [input, setInput] = useState(() => initialValue ?? "");
@@ -90,11 +89,7 @@ export function VerticalDatumPicker({
           Vertical datum (required for 3D)
         </Label>
 
-        {fromFile && (
-          <span className="text-[10px] uppercase tracking-wide text-slate-400">
-            from file
-          </span>
-        )}
+  
       </div>
 
       {isMissing && (
@@ -117,7 +112,7 @@ export function VerticalDatumPicker({
         defaultFilter={() => true}
         className="flex flex-col gap-1"
       >
-        <Group className="flex items-center rounded border border-slate-300 bg-white focus-within:border-slate-500">
+        <Group className="flex items-center rounded border border-slate-300 bg-white transition-[border-color] duration-150 focus-within:border-slate-500">
           <Input
             placeholder="e.g. EPSG:5709"
             className="w-full min-w-0 bg-transparent px-2 py-1 font-mono text-sm outline-none"
@@ -129,7 +124,7 @@ export function VerticalDatumPicker({
 
           <Button
             aria-label="Show vertical datum suggestions"
-            className="border-l border-slate-200 px-2 py-1 text-xs text-slate-500 outline-none hover:bg-slate-100 focus-visible:bg-slate-100"
+            className="border-l border-slate-200 px-2 py-1 text-xs text-slate-500 outline-none transition-[background-color,color] duration-100 hover:bg-slate-100 hover:text-slate-700 focus-visible:bg-slate-100"
           >
             ▾
           </Button>
@@ -153,7 +148,7 @@ export function VerticalDatumPicker({
                   id={item.code}
                   style={{ height: "100%", minHeight: 0 }}
                   textValue={`EPSG:${item.code}`}
-                  className="cursor-pointer px-2 py-1.5 text-xs outline-none data-focused:bg-slate-100 data-selected:bg-slate-100"
+                  className="cursor-pointer px-2 py-1.5 text-xs outline-none data-hovered:bg-slate-100 data-focused:bg-slate-100 data-selected:bg-slate-100"
                 >
                   <div className="flex items-baseline gap-2">
                     <span className="font-mono text-slate-900">

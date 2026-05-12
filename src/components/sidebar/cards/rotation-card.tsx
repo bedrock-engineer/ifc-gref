@@ -111,9 +111,12 @@ export function RotationCard({
             maximumFractionDigits: 6,
           }}
           description={
-            abscissa === null || ordinate === null
-              ? null
-              : `↳ XAxisAbscissa ${abscissa.toFixed(6)} · XAxisOrdinate ${ordinate.toFixed(6)}`
+            abscissa === null || ordinate === null ? null : (
+              <span className="tabular-nums">
+                ↳ XAxisAbscissa {abscissa.toFixed(6)} · XAxisOrdinate{" "}
+                {ordinate.toFixed(6)}
+              </span>
+            )
           }
         />
 

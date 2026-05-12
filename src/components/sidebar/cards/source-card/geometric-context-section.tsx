@@ -4,7 +4,10 @@ import {
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
-import { directionRatiosToDegrees } from "#state/workspace";
+import {
+  directionRatiosToBearing,
+  directionRatiosToDegrees,
+} from "#state/workspace";
 import type {
   RawAxis2Placement,
   RawGeometricRepresentationContext,
@@ -31,7 +34,7 @@ export function GeometricContextSection({
 }: GeometricContextSectionProps) {
   if (raw == null) {
     return (
-      <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
+      <div className="border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
         <Row label="IfcGeometricRepresentationContext" value="Not present" />
       </div>
     );
@@ -42,7 +45,7 @@ export function GeometricContextSection({
       <Heading level={3}>
         <Button
           slot="trigger"
-          className="group flex w-full items-center gap-2 rounded text-left text-xs font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+          className="group flex w-full items-center gap-2 rounded text-left text-xs font-semibold text-slate-700 outline-none transition-colors duration-150 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-500"
         >
           <span className="transition-transform group-aria-expanded:rotate-90">
             ▸
@@ -52,7 +55,7 @@ export function GeometricContextSection({
       </Heading>
 
       <DisclosurePanel>
-        <dl className="mt-2 space-y-1 rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
+        <dl className="mt-2 space-y-1 border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
           <Row
             label="ContextIdentifier"
             value={raw.contextIdentifier ?? "—"}
@@ -118,11 +121,13 @@ function TrueNorthRows({ tn }: TrueNorthRowsProps) {
     return <Row label="TrueNorth" value="—" />;
   }
   const degrees = directionRatiosToDegrees(tn.abscissa, tn.ordinate);
+  const bearing = directionRatiosToBearing(tn.abscissa, tn.ordinate);
   return (
     <>
       <Row label="TrueNorth · Abscissa" value={trimZeros(tn.abscissa, 6)} />
       <Row label="TrueNorth · Ordinate" value={trimZeros(tn.ordinate, 6)} />
       <Row label="↳ Rotation" value={`${trimZeros(degrees, 4)}°`} />
+      <Row label="↳ Bearing" value={`${trimZeros(bearing, 4)}°`} />
     </>
   );
 }

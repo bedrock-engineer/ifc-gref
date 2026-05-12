@@ -103,6 +103,8 @@ export interface ThreeDLayer {
     anchor: { lng: number; lat: number; altitude: number },
     parameters: HelmertParams,
   ): void;
+  /** Toggle visibility of IfcSpace meshes (translucent room volumes). */
+  setSpacesVisible(visible: boolean): void;
   dispose(): void;
 }
 
@@ -304,6 +306,10 @@ export function createThreeDLayer(): ThreeDLayer {
   let currentParameters: HelmertParams | null = null;
   let hasMeshes = false;
   let diagnosticFramesLogged = 0;
+  // Parallel list of IfcSpace child meshes so setSpacesVisible can flip
+  // their THREE.Object3D.visible flag without walking modelGroup every call.
+  const spaceMeshes: Array<THREE.Mesh> = [];
+  let spacesVisible = true;
 
   const layer: maplibregl.CustomLayerInterface = {
     id,
@@ -384,6 +390,7 @@ export function createThreeDLayer(): ThreeDLayer {
 
     setMeshes(meshes) {
       disposeGroup(modelGroup);
+      spaceMeshes.length = 0;
       if (meshes.length === 0) {
         console.warn("[3d-layer] setMeshes: 0 meshes received");
         hasMeshes = false;
@@ -408,6 +415,10 @@ export function createThreeDLayer(): ThreeDLayer {
         // frustum culling unreliable — the derived frustum doesn't match the
         // actual view. Skipping culling is cheap for building-scale scenes.
         threeMesh.frustumCulled = false;
+        if (mesh.isSpace) {
+          threeMesh.visible = spacesVisible;
+          spaceMeshes.push(threeMesh);
+        }
         modelGroup.add(threeMesh);
         totalVertices += mesh.positions.length / 3;
         if (alphaHistogram) {
@@ -464,6 +475,17 @@ export function createThreeDLayer(): ThreeDLayer {
       return { x: center.x, y: center.y, z: center.z };
     },
 
+    setSpacesVisible(visible) {
+      if (spacesVisible === visible) {
+        return;
+      }
+      spacesVisible = visible;
+      for (const mesh of spaceMeshes) {
+        mesh.visible = visible;
+      }
+      mapReference?.triggerRepaint();
+    },
+
     update(anchor, parameters) {
       if (DEBUG) {
         console.log("[3d-layer] update:", {
@@ -481,6 +503,7 @@ export function createThreeDLayer(): ThreeDLayer {
 
     dispose() {
       disposeGroup(modelGroup);
+      spaceMeshes.length = 0;
       renderer?.dispose();
       renderer = null;
       mapReference = null;
