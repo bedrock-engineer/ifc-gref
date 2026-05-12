@@ -12,6 +12,7 @@ import type { CustomBasemap } from "../layers/custom-basemap";
 import {
   BASEMAPS,
   OVERLAYS,
+  TERRAIN,
   type BasemapId,
   type OverlayId,
 } from "../layers/registry";
@@ -24,7 +25,15 @@ interface UseMapLayersArguments {
   /** User-added XYZ raster basemaps. Lifecycle is managed dynamically:
    *  added/removed from the live MapLibre style as this array changes. */
   customBasemaps: ReadonlyArray<CustomBasemap>;
+  /** Fade the active basemap and flatten terrain so the IFC mesh below
+   *  the ground (pilings, basements) is visible through the ground plane. */
+  transparentBasemap: boolean;
 }
+
+/** Opacity applied to basemap raster tiles when "transparent basemap" is on.
+ *  Low enough to read sub-ground geometry through; high enough that the
+ *  ground context isn't lost. */
+const FADED_BASEMAP_OPACITY = 0.25;
 
 /** Prefix for source/layer ids of user-added basemaps; keeps them out of
  *  the namespace of registry layers. */
@@ -36,7 +45,12 @@ function customBasemapLayerId(id: string): string {
 
 export function useMapLayers(
   mapRef: RefObject<MlMap | null>,
-  { basemap, overlays, customBasemaps }: UseMapLayersArguments,
+  {
+    basemap,
+    overlays,
+    customBasemaps,
+    transparentBasemap,
+  }: UseMapLayersArguments,
 ): void {
   // Live handles for custom overlays, keyed by overlay id. Held in a ref
   // so it survives re-renders; teardown runs on unmount.
@@ -55,8 +69,9 @@ export function useMapLayers(
     let cancelled = false;
 
     const cleanupReady = runWhenMapReady(map, () => {
-      syncCustomBasemaps(map, customBasemaps, basemap);
-      syncBasemaps(map, basemap);
+      syncCustomBasemaps(map, customBasemaps, basemap, transparentBasemap);
+      syncBasemaps(map, basemap, transparentBasemap);
+      syncTerrain(map, transparentBasemap);
       syncRasterOverlays(map, overlays);
       syncCustomOverlays(
         map,
@@ -75,7 +90,7 @@ export function useMapLayers(
       cancelled = true;
       cleanupReady();
     };
-  }, [mapRef, basemap, overlays, customBasemaps]);
+  }, [mapRef, basemap, overlays, customBasemaps, transparentBasemap]);
 
   useEffect(function disposeCustomOverlaysOnUnmount() {
     const ref = customHandlesRef;
@@ -88,7 +103,12 @@ export function useMapLayers(
   }, []);
 }
 
-function syncBasemaps(map: MlMap, activeBasemap: BasemapId) {
+function syncBasemaps(
+  map: MlMap,
+  activeBasemap: BasemapId,
+  transparentBasemap: boolean,
+) {
+  const opacity = transparentBasemap ? FADED_BASEMAP_OPACITY : 1;
   for (const b of BASEMAPS) {
     if (!map.getLayer(b.layer.id)) {
       continue;
@@ -98,6 +118,22 @@ function syncBasemaps(map: MlMap, activeBasemap: BasemapId) {
       "visibility",
       b.id === activeBasemap ? "visible" : "none",
     );
+    map.setPaintProperty(b.layer.id, "raster-opacity", opacity);
+  }
+}
+
+/**
+ * Terrain is otherwise always on (style sets it at startup). When the
+ * "transparent basemap" toggle is active we drop the terrain mesh too:
+ * raster opacity alone fades the texture but the terrain surface still
+ * occludes IFC geometry that sits below ground in 3D. Flattening lets
+ * pilings/basements show through.
+ */
+function syncTerrain(map: MlMap, transparentBasemap: boolean) {
+  if (transparentBasemap) {
+    map.setTerrain(null);
+  } else {
+    map.setTerrain({ source: TERRAIN.sourceId, exaggeration: 1 });
   }
 }
 
@@ -113,7 +149,9 @@ function syncCustomBasemaps(
   map: MlMap,
   basemaps: ReadonlyArray<CustomBasemap>,
   activeBasemap: BasemapId,
+  transparentBasemap: boolean,
 ) {
+  const opacity = transparentBasemap ? FADED_BASEMAP_OPACITY : 1;
   const wantedIds = new Set(basemaps.map((b) => b.id));
 
   // Remove any custom basemap layer/source that's no longer in the list.
@@ -160,6 +198,7 @@ function syncCustomBasemaps(
       "visibility",
       b.id === activeBasemap ? "visible" : "none",
     );
+    map.setPaintProperty(layerId, "raster-opacity", opacity);
   }
 }
 

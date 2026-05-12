@@ -8,6 +8,7 @@ import {
   Label,
   Popover,
   RadioGroup,
+  Switch,
   Text,
   TextField,
 } from "react-aria-components";
@@ -37,7 +38,11 @@ interface LayersPanelProps {
   /** True when the loaded file contains IfcSpace entities. */
   hasSpaces: boolean;
   showSpaces: boolean;
+  /** When on, fades the active basemap and drops terrain so IFC geometry
+   *  below the ground (pilings, basements) is visible in 3D. */
+  transparentBasemap: boolean;
   onShowSpacesChange: (next: boolean) => void;
+  onTransparentBasemapChange: (next: boolean) => void;
   onBasemapChange: (id: BasemapId) => void;
   onOverlaysChange: (next: Record<OverlayId, boolean>) => void;
   onAddCustomBasemap: (b: CustomBasemap) => void;
@@ -96,7 +101,9 @@ export function LayersPanel({
   scope,
   hasSpaces,
   showSpaces,
+  transparentBasemap,
   onShowSpacesChange,
+  onTransparentBasemapChange,
   onBasemapChange,
   onOverlaysChange,
   onAddCustomBasemap,
@@ -152,6 +159,18 @@ export function LayersPanel({
           </div>
         ))}
       </RadioGroup>
+      <Switch
+        isSelected={transparentBasemap}
+        onChange={onTransparentBasemapChange}
+        className="group flex cursor-pointer items-center justify-between gap-2 py-0.5 outline-none data-focus-visible:ring-2 data-focus-visible:ring-slate-500"
+      >
+        <span title="Fade basemap and flatten terrain so IFC geometry below the ground (pilings, basements) is visible in 3D.">
+          Transparent
+        </span>
+        <span className="flex h-3.5 w-6 items-center rounded-full bg-slate-300 px-0.5 transition-colors group-data-selected:bg-slate-900">
+          <span className="size-2.5 rounded-full bg-white transition-transform group-data-selected:translate-x-2.5" />
+        </span>
+      </Switch>
       {hasSpaces && (
         <div className="flex flex-col pt-1">
           <span className={HEADING}>IFC content</span>

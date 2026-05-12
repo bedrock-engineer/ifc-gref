@@ -147,6 +147,10 @@ export function MapView({
     "ifcgref:show-spaces:v1",
     true,
   );
+  const [transparentBasemap, setTransparentBasemap] = useStickyState<boolean>(
+    "ifcgref:transparent-basemap:v1",
+    false,
+  );
 
   const { mapRef, portals } = useMapInit(containerRef);
 
@@ -207,7 +211,12 @@ export function MapView({
     activeCrs,
     showSpaces,
   });
-  useMapLayers(mapRef, { basemap, overlays, customBasemaps });
+  useMapLayers(mapRef, {
+    basemap,
+    overlays,
+    customBasemaps,
+    transparentBasemap,
+  });
   useAnchorPicker(mapRef, isPickingAnchor, onAnchorPicked, onCancelPickAnchor);
 
   return (
@@ -242,7 +251,9 @@ export function MapView({
               scope={scope}
               hasSpaces={hasSpaces}
               showSpaces={showSpaces}
+              transparentBasemap={transparentBasemap}
               onShowSpacesChange={setShowSpaces}
+              onTransparentBasemapChange={setTransparentBasemap}
               onBasemapChange={setBasemap}
               onOverlaysChange={setOverlays}
               onAddCustomBasemap={handleAddCustomBasemap}
