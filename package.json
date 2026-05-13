@@ -3,6 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "author": {
+    "name": "Jules Blom",
+    "email": "jules.blom@bedrock.engineer",
+    "url": "https://bedrock.engineer"
+  },
+  "funding": {
+    "type": "organization",
+    "url": "https://www.buildingsmart.nl/"
+  },
   "imports": {
     "#modules/crs": {
       "types": "./src/modules/crs/index.ts",

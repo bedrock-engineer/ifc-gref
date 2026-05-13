@@ -620,11 +620,15 @@ function resolveMapUnitForWrite(
       mapUnitMetresPerUnit: preserved.metresPerUnit,
     };
   }
-  // IfcSIUnit(Dimensions, UnitType, Prefix, Name)
+  // IfcSIUnit STEP attrs are (Dimensions, UnitType, Prefix, Name) but
+  // web-ifc's JS constructor takes only (UnitType, Prefix, Name) — the
+  // Dimensions slot is implicit (always $ in the serializer). Passing a
+  // leading null for Dimensions silently shifts every subsequent arg by
+  // one and drops Name, producing `IFCSIUNIT($,$,.LENGTHUNIT.,$)` —
+  // which the reader then flags as malformed-with-empty-Name.
   const metreUnit = ifcAPI.CreateIfcEntity(
     modelID,
     IFCSIUNIT,
-    null,
     { type: 3, value: "LENGTHUNIT" },
     null,
     { type: 3, value: "METRE" },

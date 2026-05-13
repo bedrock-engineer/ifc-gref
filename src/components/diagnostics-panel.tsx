@@ -71,6 +71,27 @@ export function DiagnosticsPanel() {
             entries.map((entry) => <LogRow key={entry.id} entry={entry} />)
           )}
         </ol>
+
+        <div className="flex items-center justify-end gap-1 border-t border-slate-200 px-3 py-1 text-[11px] text-slate-500">
+          <span>by</span>
+          <a
+            className="underline hover:text-slate-700"
+            href="https://bedrock.engineer"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Bedrock.engineer
+          </a>
+          <span>for</span>
+          <a
+            className="underline hover:text-slate-700"
+            href="https://www.buildingsmart.nl/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            buildingSMART NL
+          </a>
+        </div>
       </DisclosurePanel>
     </Disclosure>
   );

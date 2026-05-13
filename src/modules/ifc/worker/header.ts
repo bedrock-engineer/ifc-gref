@@ -1,58 +1,53 @@
 /**
- * Post-save HEADER stamping. We overwrite FILE_NAME's `preprocessor_version`
- * slot (index 4 per ISO 10303-21) so the saved file carries a record of
- * which tool wrote these bytes — leaving `originating_system` (slot 5)
- * intact so the original authoring CAD is preserved.
+ * Post-save HEADER stamping. Overwrites FILE_NAME's `preprocessor_version`
+ * slot (index 4 per ISO 10303-21) in the serialised STEP bytes, leaving
+ * every other slot byte-identical so the original authoring tool stamp and
+ * any vendor-specific escaping are preserved.
  *
- * web-ifc exposes `WriteHeaderLine` but it appends rather than replaces, so
- * we can't reach for it without producing a duplicate FILE_NAME line that
- * downstream parsers would choke on. Instead we surgically patch the
- * serialised STEP bytes after `SaveModelToCallback`. The HEADER is always at
- * the start of the file and tiny, so a 16 KB slice is more than enough.
+ * Why not web-ifc: `wasmModule.WriteHeaderLine` *appends* a second
+ * FILE_NAME line (probed 2026-05; see scripts/probe-write-header-line.mjs)
+ * and its serialiser also rewrites backslashes, so even a
+ * GetHeaderLine → reserialise round-trip would silently mutate unchanged
+ * slots. We splice bytes instead. The STEP HEADER lives at the file start
+ * and is tiny — 16 KB is plenty.
  */
-
-import { emitLog } from "#lib/log";
-
-export const ATTRIBUTION =
-  "IFC Georeferencer by Bedrock.engineer for buildingSMART Netherlands";
 
 const HEAD_BYTES = 16 * 1024;
 
-interface ArgRange {
+interface ArgumentRange {
   start: number;
   end: number;
 }
 
 /**
- * Find the byte range of FILE_NAME's 5th positional argument
- * (preprocessor_version), trimmed of surrounding whitespace. Returns null
- * if FILE_NAME isn't found within the head slice or has fewer than 5 args.
+ * Yields the byte range of each top-level argument inside a STEP entity's
+ * `(...)` call, starting at `from` (just past the opening paren) and
+ * stopping at the matching close paren. Handles STEP string literals
+ * (`'...'` with `''` as escaped quote) and nested parens (the list args
+ * `author` / `organization` in FILE_NAME).
  */
-function findPreprocessorRange(head: string): ArgRange | null {
-  const match = /FILE_NAME\s*\(/i.exec(head);
-  if (!match) return null;
-
-  const ranges: ArgRange[] = [];
-  let argStart = match.index + match[0].length;
+function* splitTopLevelArguments(
+  s: string,
+  from: number,
+): Generator<ArgumentRange> {
+  let start = from;
   let depth = 0;
-  let inStr = false;
-  let closed = false;
+  let inString = false;
 
-  for (let i = argStart; i < head.length; i++) {
-    const c = head.charAt(i);
-    if (inStr) {
+  for (let index = from; index < s.length; index++) {
+    const c = s.charAt(index);
+    if (inString) {
       if (c === "'") {
-        // `''` is an escaped single quote inside a STEP string.
-        if (head.charAt(i + 1) === "'") {
-          i++;
+        if (s.charAt(index + 1) === "'") {
+          index++;
           continue;
         }
-        inStr = false;
+        inString = false;
       }
       continue;
     }
     if (c === "'") {
-      inStr = true;
+      inString = true;
       continue;
     }
     if (c === "(") {
@@ -61,29 +56,42 @@ function findPreprocessorRange(head: string): ArgRange | null {
     }
     if (c === ")") {
       if (depth === 0) {
-        ranges.push({ start: argStart, end: i });
-        closed = true;
-        break;
+        yield { start, end: index };
+        return;
       }
       depth--;
       continue;
     }
     if (c === "," && depth === 0) {
-      ranges.push({ start: argStart, end: i });
-      argStart = i + 1;
+      yield { start, end: index };
+      start = index + 1;
     }
   }
-
-  if (!closed) return null;
-  const raw = ranges[4];
-  if (!raw) return null;
-
-  let s = raw.start;
-  let e = raw.end;
-  while (s < e && /\s/.test(head.charAt(s))) s++;
-  while (e > s && /\s/.test(head.charAt(e - 1))) e--;
-  return { start: s, end: e };
 }
+
+function trimWhitespace(s: string, range: ArgumentRange): ArgumentRange {
+  let { start, end } = range;
+  while (start < end && /\s/.test(s.charAt(start))) {
+    start++;
+  }
+  while (end > start && /\s/.test(s.charAt(end - 1))) {
+    end--;
+  }
+  return { start, end };
+}
+
+function findPreprocessorRange(head: string): ArgumentRange | null {
+  const match = /FILE_NAME\s*\(/i.exec(head);
+  if (!match) {
+    return null;
+  }
+  const argumentsStart = match.index + match[0].length;
+  const arguments_ = [...splitTopLevelArguments(head, argumentsStart)];
+  return arguments_[4] ? trimWhitespace(head, arguments_[4]) : null;
+}
+
+export const ATTRIBUTION =
+  "IFC Georeferencer by Bedrock.engineer for buildingSMART Netherlands";
 
 /**
  * Replace FILE_NAME.preprocessor_version with our attribution. No-op if
@@ -98,9 +106,11 @@ export async function stampHeaderPreprocessor(blob: Blob): Promise<Blob> {
   const head = new TextDecoder("iso-8859-1").decode(headBytes);
 
   const range = findPreprocessorRange(head);
-  if (!range) return blob;
+  if (!range) {
+    return blob;
+  }
 
-  const escaped = ATTRIBUTION.replace(/'/g, "''");
+  const escaped = ATTRIBUTION.replaceAll("'", "''");
   const replacement = `'${escaped}'`;
   if (head.slice(range.start, range.end) === replacement) {
     return blob;
@@ -112,11 +122,6 @@ export async function stampHeaderPreprocessor(blob: Blob): Promise<Blob> {
   const tail = blob.slice(HEAD_BYTES);
   const stamped = new Blob([before, replacementBytes, after, tail], {
     type: blob.type,
-  });
-
-  emitLog({
-    source: "worker",
-    message: `Stamped FILE_NAME preprocessor_version: ${ATTRIBUTION}`,
   });
 
   return stamped;

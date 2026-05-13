@@ -65,7 +65,7 @@ export function useIfcWrite({
 
         const blob = await ifc.save();
 
-        triggerDownload(blob, `georeferenced-${filename}`);
+        triggerDownload(blob, `ifc-georeferencer-${filename}`);
 
         emitLog({
           message: `Saved georeferenced model (${formatBytes(blob.size)}, EPSG:${activeCrs.code})`,
