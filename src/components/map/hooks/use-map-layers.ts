@@ -25,8 +25,12 @@ interface UseMapLayersArguments {
   /** User-added XYZ raster basemaps. Lifecycle is managed dynamically:
    *  added/removed from the live MapLibre style as this array changes. */
   customBasemaps: ReadonlyArray<CustomBasemap>;
-  /** Fade the active basemap and flatten terrain so the IFC mesh below
-   *  the ground (pilings, basements) is visible through the ground plane. */
+  /** Fade the active basemap and drop terrain so the IFC mesh below the
+   *  ground (pilings, basements) is visible through the ground plane.
+   *  Terrain depth-occludes sub-ground geometry when on, so we remove it.
+   *  The 3D layer compensates altitude separately (baseline-relative
+   *  rendering in `apply-anchor.ts`) so the model still sits on the now
+   *  flat basemap. */
   transparentBasemap: boolean;
 }
 
@@ -103,6 +107,22 @@ export function useMapLayers(
   }, []);
 }
 
+/**
+ * Terrain is otherwise always on (style sets it at startup). When the
+ * "transparent basemap" toggle is active we drop the terrain mesh too:
+ * raster opacity alone fades the texture but the terrain surface still
+ * occludes IFC geometry that sits below ground in 3D. Flattening lets
+ * pilings/basements show through. The 3D layer captures a baseline so
+ * the model still renders against the now-flat basemap.
+ */
+function syncTerrain(map: MlMap, transparentBasemap: boolean) {
+  if (transparentBasemap) {
+    map.setTerrain(null);
+  } else {
+    map.setTerrain({ source: TERRAIN.sourceId, exaggeration: 1 });
+  }
+}
+
 function syncBasemaps(
   map: MlMap,
   activeBasemap: BasemapId,
@@ -119,21 +139,6 @@ function syncBasemaps(
       b.id === activeBasemap ? "visible" : "none",
     );
     map.setPaintProperty(b.layer.id, "raster-opacity", opacity);
-  }
-}
-
-/**
- * Terrain is otherwise always on (style sets it at startup). When the
- * "transparent basemap" toggle is active we drop the terrain mesh too:
- * raster opacity alone fades the texture but the terrain surface still
- * occludes IFC geometry that sits below ground in 3D. Flattening lets
- * pilings/basements show through.
- */
-function syncTerrain(map: MlMap, transparentBasemap: boolean) {
-  if (transparentBasemap) {
-    map.setTerrain(null);
-  } else {
-    map.setTerrain({ source: TERRAIN.sourceId, exaggeration: 1 });
   }
 }
 

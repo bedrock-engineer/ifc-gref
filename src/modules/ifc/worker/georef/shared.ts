@@ -79,8 +79,8 @@ export interface RawMapConversion {
   /**
    * Name of the actual entity these fields came from —
    * `"IfcMapConversion"` (IFC4+ plain), `"IfcMapConversionScaled"` (IFC4.3
-   * subtype with FactorX/Y/Z), or `"ePset_MapConversion"` (IFC2x3 OSArch
-   * convention). Single source of truth for the source-side UI's heading.
+   * subtype with FactorX/Y/Z), or `"ePset_MapConversion"` (IFC2x3 convention).
+   *  Single source of truth for the source-side UI's heading.
    */
   entityName: string;
   eastings: number;

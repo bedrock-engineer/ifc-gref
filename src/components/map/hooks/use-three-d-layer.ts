@@ -1,5 +1,5 @@
 import { type Map as MlMap } from "maplibre-gl";
-import { type RefObject, useEffect, useRef } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { emitLog } from "#lib/log";
 import type { CrsDef } from "#modules/crs";
@@ -15,6 +15,7 @@ interface ThreeDState {
   parameters: HelmertParams | null;
   activeCrs: CrsDef | null;
   showSpaces: boolean;
+  transparentBasemap: boolean;
 }
 
 interface MeshOrigin {
@@ -33,8 +34,14 @@ type Meshes = Awaited<ReturnType<IfcFacade["extractMeshes"]>>;
  */
 export function useThreeDLayer(
   mapRef: RefObject<MlMap | null>,
-  { view, parameters, activeCrs, showSpaces }: ThreeDState,
-): void {
+  {
+    view,
+    parameters,
+    activeCrs,
+    showSpaces,
+    transparentBasemap,
+  }: ThreeDState,
+): { isLoading: boolean } {
   const threeDRef = useRef<ThreeDLayer | null>(null);
   const meshOriginRef = useRef<MeshOrigin | null>(null);
   // Cache meshes so toggling back to 3D doesn't re-fetch. The ref resets
@@ -44,6 +51,16 @@ export function useThreeDLayer(
   // toggle effect below so a flip during in-flight mesh load isn't lost.
   // Kept out of the setup effect's deps so toggling doesn't re-anchor.
   const showSpacesRef = useRef(showSpaces);
+  // `OrthogonalHeight` captured the first time the model is anchored
+  // while transparent mode is on. Used as the 0-reference so the model
+  // sits on the flat basemap, while edits to OrthogonalHeight still
+  // move it 1:1. Cleared when transparent mode is toggled off — see the
+  // effect below.
+  const transparentBaselineRef = useRef<number | null>(null);
+  // Drives the "Loading 3D model…" overlay in MapView. True while the
+  // dynamic three.js import and mesh extraction are in flight; falls back
+  // to false on completion, teardown, or cancellation.
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -52,6 +69,7 @@ export function useThreeDLayer(
     }
 
     if (view !== "3d") {
+      setIsLoading(false);
       teardown(map, threeDRef, meshOriginRef);
       return;
     }
@@ -63,6 +81,7 @@ export function useThreeDLayer(
     }
 
     let cancelled = false;
+    setIsLoading(true);
 
     setup(map, {
       parameters,
@@ -72,22 +91,42 @@ export function useThreeDLayer(
       meshOriginRef,
       meshCacheRef,
       isCancelled: () => cancelled,
-    }).catch((error: unknown) => {
-      emitLog({
-        level: "error",
-        message: `3D layer setup failed: ${error instanceof Error ? error.message : String(error)}`,
+      transparentBasemap,
+      transparentBaselineRef,
+    })
+      .catch((error: unknown) => {
+        emitLog({
+          level: "error",
+          message: `3D layer setup failed: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       });
-    });
 
     return () => {
       cancelled = true;
+      setIsLoading(false);
     };
-  }, [mapRef, view, parameters, activeCrs]);
+  }, [mapRef, view, parameters, activeCrs, transparentBasemap]);
 
   useEffect(() => {
     showSpacesRef.current = showSpaces;
     threeDRef.current?.setSpacesVisible(showSpaces);
   }, [showSpaces]);
+
+  // Reset the baseline whenever transparent mode is toggled off so the
+  // next entry into transparent mode re-snapshots the current
+  // OrthogonalHeight.
+  useEffect(() => {
+    if (!transparentBasemap) {
+      transparentBaselineRef.current = null;
+    }
+  }, [transparentBasemap]);
+
+  return { isLoading };
 }
 
 function teardown(
@@ -122,6 +161,8 @@ async function setup(
     meshOriginRef: RefObject<MeshOrigin | null>;
     meshCacheRef: RefObject<Promise<Meshes> | null>;
     isCancelled: () => boolean;
+    transparentBasemap: boolean;
+    transparentBaselineRef: RefObject<number | null>;
   },
 ): Promise<void> {
   // Lazy-load three.js + our threeDLayer module.
@@ -171,6 +212,10 @@ async function setup(
     context.activeCrs,
     map,
     meshOrigin,
-    isInitialPlacement,
+    {
+      flyCamera: isInitialPlacement,
+      transparentBasemap: context.transparentBasemap,
+      transparentBaseline: context.transparentBaselineRef,
+    },
   );
 }

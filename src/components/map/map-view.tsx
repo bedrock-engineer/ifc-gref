@@ -205,11 +205,12 @@ export function MapView({
 
   useAxesLayer(mapRef, axesGeometry);
   useResidualsLayer(mapRef, residualsPoints, parameters, activeCrs);
-  useThreeDLayer(mapRef, {
+  const { isLoading: isLoadingThreeD } = useThreeDLayer(mapRef, {
     view: effectiveView,
     parameters,
     activeCrs,
     showSpaces,
+    transparentBasemap,
   });
   useMapLayers(mapRef, {
     basemap,
@@ -228,6 +229,7 @@ export function MapView({
             <ViewToggle
               view={effectiveView}
               disabledReason={threeDDisabledReason}
+              isLoading={isLoadingThreeD}
               onChange={(next) => {
                 setView(next);
                 // 3D's initial placement flyTo may have moved the camera
@@ -286,3 +288,4 @@ export function MapView({
     </>
   );
 }
+

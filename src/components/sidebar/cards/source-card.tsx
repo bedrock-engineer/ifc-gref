@@ -160,7 +160,7 @@ export function SourceCard({
         <p className="border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           IFC2x3 has no native <code>IfcMapConversion</code> or{" "}
           <code>IfcProjectedCRS</code> entity. Georeferencing is encoded as
-          property sets on <code>IfcSite</code> by the OSArch convention (
+          property sets on <code>IfcSite</code> by convention (
           <code>ePset_MapConversion</code>, <code>ePset_ProjectedCRS</code>) —
           readable by tools that look for these psets, but not part of the IFC
           spec.

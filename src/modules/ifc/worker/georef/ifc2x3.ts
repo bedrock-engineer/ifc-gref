@@ -32,8 +32,8 @@ import {
 } from "./shared";
 
 /**
- * IFC2X3 has no native IfcMapConversion. The community convention (OSArch
- * wiki) is two property sets on IfcSite: ePset_MapConversion holds the 7
+ * IFC2X3 has no native IfcMapConversion. The community convention is 
+ * two property sets on IfcSite: ePset_MapConversion holds the 7
  * transform fields, ePset_ProjectedCRS holds the target CRS name. Accept
  * both `ePset_` and `ePSet_` casings — files in the wild use both.
  *
@@ -112,22 +112,20 @@ export function readGeorefIfc2x3(
   // If the file had only ePset_MapConversion (no ePset_ProjectedCRS), we
   // still need a non-null rawProjectedCrs so `classifyGeorefRead` can
   // surface the targetCrsName hint from MC.TargetCRS.
-  const projectedCrs =
-    rawProjectedCrs
-    ?? {
-      entityName: "ePset_ProjectedCRS",
-      name: optionalPropertyString(mcProperties.TargetCRS),
-      description: null,
-      geodeticDatum: null,
-      verticalDatum: null,
-      mapProjection: null,
-      mapZone: null,
-      mapUnit: null,
-      // ePset has no malformed-shift problem; "absent" here means the
-      // pset's MapUnit property is missing/blank, and the IFC2X3 reader
-      // falls back to project units (not METRE — see source-card label).
-      mapUnitStatus: "absent" as const,
-    };
+  const projectedCrs = rawProjectedCrs ?? {
+    entityName: "ePset_ProjectedCRS",
+    name: optionalPropertyString(mcProperties.TargetCRS),
+    description: null,
+    geodeticDatum: null,
+    verticalDatum: null,
+    mapProjection: null,
+    mapZone: null,
+    mapUnit: null,
+    // ePset has no malformed-shift problem; "absent" here means the
+    // pset's MapUnit property is missing/blank, and the IFC2X3 reader
+    // falls back to project units (not METRE — see source-card label).
+    mapUnitStatus: "absent" as const,
+  };
 
   return classifyGeorefRead({
     helmert,
@@ -250,9 +248,27 @@ export function writeGeorefIfc2x3(
     ownerHistoryHandle,
     [
       property(ifcAPI, modelID, "TargetCRS", IFCLABEL, crsName),
-      property(ifcAPI, modelID, "Eastings", IFCLENGTHMEASURE, parameters.easting / ifcMetresPerUnit),
-      property(ifcAPI, modelID, "Northings", IFCLENGTHMEASURE, parameters.northing / ifcMetresPerUnit),
-      property(ifcAPI, modelID, "OrthogonalHeight", IFCLENGTHMEASURE, parameters.height / ifcMetresPerUnit),
+      property(
+        ifcAPI,
+        modelID,
+        "Eastings",
+        IFCLENGTHMEASURE,
+        parameters.easting / ifcMetresPerUnit,
+      ),
+      property(
+        ifcAPI,
+        modelID,
+        "Northings",
+        IFCLENGTHMEASURE,
+        parameters.northing / ifcMetresPerUnit,
+      ),
+      property(
+        ifcAPI,
+        modelID,
+        "OrthogonalHeight",
+        IFCLENGTHMEASURE,
+        parameters.height / ifcMetresPerUnit,
+      ),
       property(ifcAPI, modelID, "XAxisAbscissa", IFCREAL, xAxisAbscissa),
       property(ifcAPI, modelID, "XAxisOrdinate", IFCREAL, xAxisOrdinate),
       property(ifcAPI, modelID, "Scale", IFCREAL, parameters.xScale),
@@ -362,7 +378,6 @@ function property(
   valueType: number,
   value: number | string,
 ): any {
-
   return ifcAPI.CreateIfcEntity(
     modelID,
     IFCPROPERTYSINGLEVALUE,
@@ -380,7 +395,6 @@ function buildPset(
   ownerHistory: any,
   properties: Array<any>,
 ): any {
-
   return ifcAPI.CreateIfcEntity(
     modelID,
     IFCPROPERTYSET,
