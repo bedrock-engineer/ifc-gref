@@ -218,6 +218,14 @@ export function SurveyPointsCard({
             with target coordinates (X′, Y′, Z′ in CRS units). Paste from Excel
             works; column headers indicate the expected units.
           </p>
+
+          <p>
+            With ≥2 points the fit absorbs the projection's combined scale
+            factor (~0.9999 in RDNew, down to 0.9996 at
+            UTM zone edges) into <code>Scale</code>, so you can paste raw
+            surveyor coordinates without pre-reducing ground distances to
+            grid.
+          </p>
         </CardHelpButton>
       </div>
 
