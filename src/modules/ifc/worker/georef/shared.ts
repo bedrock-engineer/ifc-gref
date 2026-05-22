@@ -130,6 +130,11 @@ export interface RawSourceCrs {
  */
 export type MapConversionStatus = "real" | "placeholder" | "absent";
 
+export type ActiveCoordinateOperation =
+  | "map-conversion"
+  | "rigid-operation"
+  | "none";
+
 export interface GeorefRead {
   existingGeoref: ExistingGeoref | null;
   /**
@@ -166,17 +171,44 @@ export interface GeorefRead {
    * surface the first one read.
    */
   rawRigidOperation: RawRigidOperation | null;
+  /**
+   * Which entity drove `existingGeoref`. Source-card uses it to show the
+   * active-transform heading; save-card uses it to seed the "Will write"
+   * indicator. See `ActiveCoordinateOperation` for the precedence rules.
+   */
+  activeCoordinateOperation: ActiveCoordinateOperation;
 }
 
 /**
  * The WGS84 anchor synced onto IfcSite when writing a new MapConversion.
  * Computed on the main thread by reverse-projecting (Eastings, Northings)
  * through the target CRS, so the worker doesn't need proj4.
+ *
+ * Elevation deliberately absent: `IfcSite.RefElevation`'s vertical datum is
+ * unspecified by the spec (file-author intent), and proj4js can't transform
+ * between vertical datums (no geoid grids). Copying `OrthogonalHeight`
+ * verbatim onto `RefElevation` is "right iff both fields share a datum",
+ * which we can't verify. We leave the file's original `RefElevation`
+ * untouched on save.
  */
 export interface SiteReferenceSync {
   latitude: number;
   longitude: number;
-  elevation: number;
+}
+
+/**
+ * Vertical-datum hint surfaced to the UI. Null when the file's
+ * IfcProjectedCRS / ePset_ProjectedCRS doesn't carry one (the common case
+ * — most BIM exporters skip the field) or the field is empty. Shared by
+ * the IFC4 MC reader, the IFC4 RigidOp fallback reader, the IFC2X3 ePset
+ * reader, and the absent-georef terminator, so the empty-string vs null
+ * rule lives in one place.
+ */
+export function deriveVerticalDatumHint(
+  rawProjectedCrs: RawProjectedCrs | null,
+): string | null {
+  const verticalDatum = rawProjectedCrs?.verticalDatum;
+  return verticalDatum && verticalDatum.length > 0 ? verticalDatum : null;
 }
 
 /**
@@ -194,8 +226,7 @@ export function classifyGeorefRead(input: {
   const { helmert, rawProjectedCrs, rawMapConversion } = input;
   const targetCrsName = rawProjectedCrs?.name ?? "";
   const hint = targetCrsName || null;
-  const verticalDatum = rawProjectedCrs?.verticalDatum ?? null;
-  const verticalHint = verticalDatum && verticalDatum.length > 0 ? verticalDatum : null;
+  const verticalHint = deriveVerticalDatumHint(rawProjectedCrs);
   if (isTrivialHelmert(helmert)) {
     emitLog({
       source: "worker",
@@ -209,6 +240,7 @@ export function classifyGeorefRead(input: {
       rawMapConversion,
       mapConversionStatus: "placeholder",
       rawRigidOperation: null,
+      activeCoordinateOperation: "none",
     };
   }
   return {
@@ -219,6 +251,7 @@ export function classifyGeorefRead(input: {
     rawMapConversion,
     mapConversionStatus: "real",
     rawRigidOperation: null,
+    activeCoordinateOperation: "map-conversion",
   };
 }
 
@@ -229,14 +262,11 @@ export function absentGeorefRead(
   return {
     existingGeoref: null,
     targetCrsHint: rawProjectedCrs?.name ?? null,
-    verticalDatumHint:
-      rawProjectedCrs?.verticalDatum
-      && rawProjectedCrs.verticalDatum.length > 0
-        ? rawProjectedCrs.verticalDatum
-        : null,
+    verticalDatumHint: deriveVerticalDatumHint(rawProjectedCrs),
     rawProjectedCrs,
     rawMapConversion: null,
     mapConversionStatus: "absent",
     rawRigidOperation: null,
+    activeCoordinateOperation: "none",
   };
 }

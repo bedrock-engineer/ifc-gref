@@ -24,6 +24,10 @@ export function deriveOverlaySignals(arguments_: {
   activeCrs: CrsDef | null;
   footprintLocal: ReadonlyArray<{ x: number; y: number }> | null;
   spacesLocal: ReadonlyArray<SpaceExtract> | null;
+  /**
+   * Entity name to render on the coordinate-operation marker label.
+   */
+  coordinateOperationLabel: string;
 }): MapOverlaySignals {
   const {
     references,
@@ -31,6 +35,7 @@ export function deriveOverlaySignals(arguments_: {
     activeCrs,
     footprintLocal,
     spacesLocal,
+    coordinateOperationLabel,
   } = arguments_;
   let footprint: Array<[number, number]> | null = null;
   let spaces: ReadonlyArray<SpaceOverlay> | null = null;
@@ -48,6 +53,7 @@ export function deriveOverlaySignals(arguments_: {
     footprint,
     spaces,
     mapConversion: references.mapConversion,
+    coordinateOperationLabel,
     siteReference: references.siteReference,
   };
 }

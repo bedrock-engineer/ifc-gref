@@ -24,8 +24,18 @@ export interface MapOverlaySignals {
   footprint: Array<[number, number]> | null;
   /** Per-IfcSpace convex-hull polygons, each projected to WGS84. */
   spaces: ReadonlyArray<SpaceOverlay> | null;
-  /** Live IfcMapConversion-derived anchor — moves with edited Helmert params. */
+  /**
+   * Live anchor — WGS84 image of local (0,0,0) under the current Helmert.
+   * from IfcMapConversion; or with IFC 4.3 support from IfcRigidOperation.
+   */
   mapConversion: LngLat | null;
+  /**
+   * Entity name to render next to the coordinate-operation marker glyph.
+   * Tracks the active driver: "IfcMapConversion" / "IfcRigidOperation"
+   * (or "ePset_MapConversion" on IFC2x3). Empty/unused when
+   * `mapConversion` is null.
+   */
+  coordinateOperationLabel: string;
   /** IfcSite RefLat/RefLon (already filtered for outside-bbox cases). */
   siteReference: LngLat | null;
 }

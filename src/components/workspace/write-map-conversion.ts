@@ -45,9 +45,8 @@ export async function writeMapConversionToWorker(arguments_: {
  * null if proj4 throws — the MapConversion is still authoritative in that
  * case, so we just skip the sync and log a warning.
  *
- * Elevation is taken directly from OrthogonalHeight; for most projected
- * CRS the vertical component is undefined, and this mirrors the assumption
- * the rest of the app already makes (anchor-card shows height = OrthoH).
+ * RefElevation deliberately not synced: see `SiteReferenceSync` docstring
+ * for the vertical-datum reasoning.
  */
 function deriveSiteReference(
   activeCrs: CrsDef,
@@ -68,6 +67,5 @@ function deriveSiteReference(
   return {
     latitude: wgs84.value.latitude,
     longitude: wgs84.value.longitude,
-    elevation: parameters.height,
   };
 }

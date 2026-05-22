@@ -18,6 +18,7 @@ import {
   filterVerticalDatumOptions,
   type VerticalDatumOption,
 } from "#modules/crs";
+import { TriangleDownIcon } from "@radix-ui/react-icons";
 
 interface VerticalDatumPickerProps {
   /** Seed for the input on mount. Subsequent prop changes are ignored —
@@ -88,8 +89,6 @@ export function VerticalDatumPicker({
         <Label className="text-xs text-slate-600">
           Vertical datum (required for 3D)
         </Label>
-
-  
       </div>
 
       {isMissing && (
@@ -126,7 +125,7 @@ export function VerticalDatumPicker({
             aria-label="Show vertical datum suggestions"
             className="border-l border-slate-200 px-2 py-1 text-xs text-slate-500 outline-none transition-[background-color,color] duration-100 hover:bg-slate-100 hover:text-slate-700 focus-visible:bg-slate-100"
           >
-            ▾
+            <TriangleDownIcon />
           </Button>
         </Group>
 

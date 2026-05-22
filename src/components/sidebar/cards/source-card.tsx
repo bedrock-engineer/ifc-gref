@@ -112,6 +112,13 @@ export function SourceCard({
   const mapConversionEntity =
     metadata.rawMapConversion?.entityName ??
     (isEpsetSchema ? "ePset_MapConversion" : "IfcMapConversion");
+  // For the LoGeoRef caption: name the entity that's actually driving the
+  // anchor, so a RigidOp-positioned file reads "IfcRigidOperation present,
+  // file is georeferenced" rather than the misleading "IfcMapConversion …".
+  const activeCoordinateOperationEntity =
+    metadata.activeCoordinateOperation === "rigid-operation"
+      ? "IfcRigidOperation"
+      : mapConversionEntity;
 
   const projectedCrsEntity =
     metadata.rawProjectedCrs?.entityName ??
@@ -153,7 +160,7 @@ export function SourceCard({
       )}
 
       <p className="text-xs text-slate-500">
-        {loGeorefDescription(level, mapConversionEntity)}
+        {loGeorefDescription(level, activeCoordinateOperationEntity)}
       </p>
 
       {isEpsetSchema && (
@@ -192,7 +199,11 @@ export function SourceCard({
           absentEntityName={mapConversionEntity}
           mapUnitShort={mapUnitShort}
         />
-        <RigidOperationSection raw={metadata.rawRigidOperation} />
+        <RigidOperationSection
+          raw={metadata.rawRigidOperation}
+          role={deriveRigidOperationRole(metadata)}
+          mapUnitShort={mapUnitShort}
+        />
       </div>
 
       <SidecarControls
@@ -263,6 +274,24 @@ function detectLevelOfGeoref(metadata: IfcMetadata): LoGeoref {
     return "l20";
   }
   return "le10";
+}
+
+/**
+ * Map the worker's `activeCoordinateOperation` discriminator into the
+ * heading-badge role for `RigidOperationSection`. When a RigidOp entity
+ * is in the file, this is exactly its role; "inactive" is the
+ * present-but-not-positionable case (geographic TargetCRS).
+ */
+function deriveRigidOperationRole(
+  metadata: IfcMetadata,
+): "active" | "overridden" | "inactive" {
+  if (metadata.activeCoordinateOperation === "rigid-operation") {
+    return "active";
+  }
+  if (metadata.activeCoordinateOperation === "map-conversion") {
+    return "overridden";
+  }
+  return "inactive";
 }
 
 function LengthUnitValue({ name }: { name: string }) {

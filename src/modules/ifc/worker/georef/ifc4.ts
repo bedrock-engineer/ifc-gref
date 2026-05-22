@@ -34,6 +34,8 @@ import {
 import {
   absentGeorefRead,
   classifyGeorefRead,
+  deriveVerticalDatumHint,
+  type ExistingGeoref,
   type GeorefRead,
   type RawProjectedCrs,
   type RawRigidOperation,
@@ -43,17 +45,34 @@ import {
 /**
  * IFC4+ read path. Looks for a native IfcMapConversion entity and reads
  * its six Helmert fields + the referenced IfcProjectedCRS attributes.
+ *
+ * Falls back to IfcRigidOperation (IFC 4.3 sibling — translation only)
+ * when no MapConversion exists. RigidOp drives a HelmertParams with the
+ * file's TrueNorth as rotation seed and unit scale, since the entity by
+ * definition carries no rotation or scale. Skips RigidOp when its
+ * TargetCRS is geographic (the map pipeline only handles projected); the
+ * RigidOp is still surfaced in the raw display. A placeholder
+ * MapConversion (Revit-style E=N=0) wins over a RigidOp present in the
+ * same file — the combo is rare enough not to special-case.
  */
 export function readGeorefIfc4(
   ifcAPI: IfcAPI,
   modelID: number,
   ifcMetresPerUnit: number,
+  trueNorthRotation: number,
 ): GeorefRead {
   // IfcRigidOperation is an IFC 4.3-only sibling of IfcMapConversion —
   // GetLineIDsWithType returns 0 entries on pre-4.3 schemas, so this read
-  // is safe to attempt unconditionally. Read-only display; not wired into
-  // the active georef workflow.
-  const rawRigidOperation = readRigidOperationIfc4(ifcAPI, modelID);
+  // is safe to attempt unconditionally. The result feeds two paths: raw
+  // display (always), and fallback driver when MapConversion is absent
+  // or placeholder (handled below).
+  const rigidOpResult = readRigidOperationIfc4(
+    ifcAPI,
+    modelID,
+    ifcMetresPerUnit,
+    trueNorthRotation,
+  );
+  const rawRigidOperation = rigidOpResult.raw;
 
   // `includeInherited: true` makes the query also return IfcMapConversionScaled
   // instances (an IFC 4.3 subtype that adds FactorX/Y/Z for non-isotropic
@@ -66,10 +85,18 @@ export function readGeorefIfc4(
   // entries return undefined.
   const mc = firstResolvableLine(ifcAPI, modelID, ids, /* flatten */ true);
   if (!mc) {
-    // Even without a MapConversion, a stand-alone IfcProjectedCRS may
-    // still exist in the file (rare; the IFC4 model is supposed to
-    // attach via MapConversion). We don't pursue it — without a
-    // transform there's nothing to anchor it to.
+    // No MapConversion. If we have a usable RigidOp-derived georef, it
+    // drives the anchor; otherwise return the absent shape. Either way
+    // the raw RigidOp is preserved for the source-card display.
+    if (rigidOpResult.driverGeoref) {
+      return {
+        ...rigidOpResult.driverGeoref,
+        rawMapConversion: null,
+        mapConversionStatus: "absent",
+        rawRigidOperation,
+        activeCoordinateOperation: "rigid-operation",
+      };
+    }
     return { ...absentGeorefRead(null), rawRigidOperation };
   }
   const target: any = mc.TargetCRS;
@@ -147,58 +174,139 @@ export function readGeorefIfc4(
     });
   }
 
+  const classified = classifyGeorefRead({
+    helmert,
+    rawProjectedCrs,
+    rawMapConversion: {
+      entityName: isScaled ? "IfcMapConversionScaled" : "IfcMapConversion",
+      eastings: onDiskE,
+      northings: onDiskN,
+      orthogonalHeight: onDiskH,
+      scale: onDiskScale,
+      xAxisAbscissa: onDiskXAbs,
+      xAxisOrdinate: onDiskXOrd,
+      factorX: isScaled ? factorX : null,
+      factorY: isScaled ? factorY : null,
+      factorZ: isScaled ? factorZ : null,
+      sourceCrs: rawSourceCrs,
+    },
+  });
+
   return {
-    ...classifyGeorefRead({
-      helmert,
-      rawProjectedCrs,
-      rawMapConversion: {
-        entityName: isScaled ? "IfcMapConversionScaled" : "IfcMapConversion",
-        eastings: onDiskE,
-        northings: onDiskN,
-        orthogonalHeight: onDiskH,
-        scale: onDiskScale,
-        xAxisAbscissa: onDiskXAbs,
-        xAxisOrdinate: onDiskXOrd,
-        factorX: isScaled ? factorX : null,
-        factorY: isScaled ? factorY : null,
-        factorZ: isScaled ? factorZ : null,
-        sourceCrs: rawSourceCrs,
-      },
-    }),
+    ...classified,
     rawRigidOperation,
   };
 }
 
+interface RigidOperationReadResult {
+  /** Verbatim-from-file fields for the source-card display, or null if no entity. */
+  raw: RawRigidOperation | null;
+  /**
+   * Set when the RigidOp is usable as the active transform: entity present,
+   * TargetCRS is `IfcProjectedCRS`, and the file's MapUnit / unit boundary
+   * could be resolved. The HelmertParams carries the TrueNorth-seeded
+   * rotation. Null when the RigidOp is absent, or when TargetCRS is
+   * geographic (the map pipeline only handles projected) — in the geographic
+   * case the raw is still surfaced for display.
+   *
+   * `rawProjectedCrs` is parallel to the MapConversion path: same shape,
+   * built from the same `target` entity, so the source-card's ProjectedCRS
+   * section renders identically regardless of which CoordinateOperation
+   * subtype drove the anchor.
+   */
+  driverGeoref: {
+    existingGeoref: ExistingGeoref;
+    rawProjectedCrs: RawProjectedCrs | null;
+    targetCrsHint: string | null;
+    verticalDatumHint: string | null;
+  } | null;
+}
+
 /**
  * Read the first IfcRigidOperation entity in the model, if any. IFC 4.3
- * introduces this as a translation-only sibling of IfcMapConversion. We
- * surface it for inspection only — the editor still drives writes through
- * IfcMapConversion. Returns null on pre-4.3 schemas (the type-id query
- * yields 0 results) and on 4.3 files that don't carry one.
+ * introduces this as a translation-only sibling of IfcMapConversion. The
+ * raw fields are always returned for the source-card disclosure; the
+ * driver-georef is returned only when the entity can position the model on
+ * the map (TargetCRS is projected). Returns null on pre-4.3 schemas
+ * (`IFCRIGIDOPERATION` type-id query yields 0 results there).
+ *
+ * `trueNorthRotation` seeds rotation: RigidOp by definition has none, so we
+ * use the file's TrueNorth as the rotation guess — same convention as the
+ * single-point Helmert fallback. The user can override via the rotation card.
  */
 function readRigidOperationIfc4(
   ifcAPI: IfcAPI,
   modelID: number,
-): RawRigidOperation | null {
+  ifcMetresPerUnit: number,
+  trueNorthRotation: number,
+): RigidOperationReadResult {
   const ids = ifcAPI.GetLineIDsWithType(modelID, IFCRIGIDOPERATION);
   const op = firstResolvableLine(ifcAPI, modelID, ids, /* flatten */ true);
   if (!op) {
-    return null;
+    return { raw: null, driverGeoref: null };
   }
   const heightRaw = rawValue(op.Height);
   const target: any = op.TargetCRS;
   const targetCrsName = target ? optionalString(target.Name) : null;
-  const result: RawRigidOperation = {
+  const raw: RawRigidOperation = {
     firstCoordinate: optionalNumber(op.FirstCoordinate, 0),
     secondCoordinate: optionalNumber(op.SecondCoordinate, 0),
     height: heightRaw == null ? null : Number(heightRaw),
     targetCrsName,
   };
+
+  // The map pipeline only handles projected CRSs. Geographic targets (and
+  // any other CoordinateReferenceSystemSelect) get surfaced as raw display
+  // but don't feed existingGeoref — the model can't be positioned.
+  if (target?.type !== IFCPROJECTEDCRS) {
+    emitLog({
+      source: "worker",
+      message: `Read IfcRigidOperation${targetCrsName ? ` (target ${targetCrsName})` : ""} — non-projected TargetCRS, not positioning on map`,
+    });
+    return { raw, driverGeoref: null };
+  }
+
+  // Unit boundary mirrors IfcMapConversion exactly: FirstCoordinate /
+  // SecondCoordinate / Height live in IfcProjectedCRS.MapUnit (same
+  // convention authoring tools use for MapConversion E/N/H), with METRE
+  // fallback when MapUnit is absent. No on-disk Scale to invert here —
+  // RigidOp doesn't carry one — so the malformed-recovery branch of
+  // readMapUnitMetresPerUnit doesn't fire.
+  const mapUnitMetresPerUnit = readMapUnitMetresPerUnit(
+    target,
+    ifcMetresPerUnit,
+  );
+  const mapUnitStatus = computeMapUnitStatus({
+    target,
+    mapUnitMetresPerUnit,
+    ifcMetresPerUnit,
+  });
+  const rawProjectedCrs = readRawProjectedCrsIfc4(target, mapUnitStatus);
+
+  const helmert: HelmertParams = {
+    easting: raw.firstCoordinate * mapUnitMetresPerUnit,
+    northing: raw.secondCoordinate * mapUnitMetresPerUnit,
+    height: (raw.height ?? 0) * mapUnitMetresPerUnit,
+    rotation: trueNorthRotation,
+    xScale: 1,
+    yScale: 1,
+    zScale: 1,
+  };
+
   emitLog({
     source: "worker",
-    message: `Read IfcRigidOperation${targetCrsName ? ` (target ${targetCrsName})` : ""}`,
+    message: `Read IfcRigidOperation (target ${targetCrsName ?? "?"}, E=${raw.firstCoordinate}, N=${raw.secondCoordinate}${raw.height == null ? "" : `, H=${raw.height}`}, rotation seeded from TrueNorth: ${trueNorthRotation.toFixed(4)} rad)`,
   });
-  return result;
+
+  return {
+    raw,
+    driverGeoref: {
+      existingGeoref: { targetCrsName: targetCrsName ?? "", helmert },
+      rawProjectedCrs,
+      targetCrsHint: targetCrsName,
+      verticalDatumHint: deriveVerticalDatumHint(rawProjectedCrs),
+    },
+  };
 }
 
 /**
@@ -351,6 +459,13 @@ export function writeGeorefIfc4(
     parameters.xScale
     * onDiskScaleRatio(ifcMetresPerUnit, setup.mapUnitMetresPerUnit);
 
+  const [e, n, h] = lengthTripleInMapUnit(
+    ifcAPI,
+    modelID,
+    parameters,
+    setup.mapUnitMetresPerUnit,
+  );
+
   // IfcMapConversion(SourceCRS, TargetCRS, Eastings, Northings,
   //                  OrthogonalHeight, XAxisAbscissa, XAxisOrdinate, Scale)
   const mapConversion = ifcAPI.CreateIfcEntity(
@@ -358,21 +473,9 @@ export function writeGeorefIfc4(
     IFCMAPCONVERSION,
     new Handle(setup.sourceContextID),
     setup.projectedCRS,
-    ifcAPI.CreateIfcType(
-      modelID,
-      IFCLENGTHMEASURE,
-      parameters.easting / setup.mapUnitMetresPerUnit,
-    ),
-    ifcAPI.CreateIfcType(
-      modelID,
-      IFCLENGTHMEASURE,
-      parameters.northing / setup.mapUnitMetresPerUnit,
-    ),
-    ifcAPI.CreateIfcType(
-      modelID,
-      IFCLENGTHMEASURE,
-      parameters.height / setup.mapUnitMetresPerUnit,
-    ),
+    e,
+    n,
+    h,
     ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisAbscissa),
     ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisOrdinate),
     ifcAPI.CreateIfcType(modelID, IFCREAL, onDiskScale),
@@ -419,6 +522,13 @@ export function writeGeorefIfc4Scaled(
     setup.mapUnitMetresPerUnit,
   );
 
+  const [e, n, h] = lengthTripleInMapUnit(
+    ifcAPI,
+    modelID,
+    parameters,
+    setup.mapUnitMetresPerUnit,
+  );
+
   // IfcMapConversionScaled(SourceCRS, TargetCRS, Eastings, Northings,
   //                        OrthogonalHeight, XAxisAbscissa, XAxisOrdinate,
   //                        Scale, FactorX, FactorY, FactorZ)
@@ -427,21 +537,9 @@ export function writeGeorefIfc4Scaled(
     IFCMAPCONVERSIONSCALED,
     new Handle(setup.sourceContextID),
     setup.projectedCRS,
-    ifcAPI.CreateIfcType(
-      modelID,
-      IFCLENGTHMEASURE,
-      parameters.easting / setup.mapUnitMetresPerUnit,
-    ),
-    ifcAPI.CreateIfcType(
-      modelID,
-      IFCLENGTHMEASURE,
-      parameters.northing / setup.mapUnitMetresPerUnit,
-    ),
-    ifcAPI.CreateIfcType(
-      modelID,
-      IFCLENGTHMEASURE,
-      parameters.height / setup.mapUnitMetresPerUnit,
-    ),
+    e,
+    n,
+    h,
     ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisAbscissa),
     ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisOrdinate),
     ifcAPI.CreateIfcType(modelID, IFCREAL, onDiskScale),
@@ -451,6 +549,102 @@ export function writeGeorefIfc4Scaled(
   );
 
   ifcAPI.WriteLine(modelID, mapConversion);
+}
+
+/**
+ * IFC 4.3 IfcRigidOperation writer — translation-only sibling of
+ * IfcMapConversion. Used by the dispatcher in `writeMapConversion` when
+ * the file originally carried a RigidOp and the user hasn't introduced
+ * rotation or scale (those would force an upgrade to IfcMapConversion,
+ * which the dispatcher takes care of). Round-trip-safe with the reader:
+ * load → save without edits leaves the entity type and translation values
+ * unchanged.
+ *
+ * `parameters.rotation` and the scale fields are ignored on this path —
+ * the dispatcher only routes here when they're at identity, so the
+ * RigidOp encoding loses nothing. If the dispatcher routed wrong, the
+ * file would silently drop a rotation/scale the user intended; the
+ * dispatcher's tolerance check is the safety net.
+ */
+export function writeGeorefIfc4Rigid(
+  ifcAPI: IfcAPI,
+  modelID: number,
+  epsgCode: number,
+  verticalDatum: string | null,
+  parameters: HelmertParams,
+  // Signature parity with the other two IFC4 writers; the dispatcher routes
+  // here only when params are at identity rotation/scale, so this writer
+  // ignores `rotation` (no XAxis pair on RigidOp). ifcMetresPerUnit is still
+  // used: FirstCoordinate/SecondCoordinate/Height go through the same
+  // MapUnit boundary as MapConversion's E/N/H — same convention authoring
+  // tools use, same path through `lengthTripleInMapUnit`.
+  _ifcMetresPerUnit: number,
+): void {
+  const setup = setupIfc4GeorefWrite(
+    ifcAPI,
+    modelID,
+    epsgCode,
+    verticalDatum,
+    /* rotation, unused on this path */ 0,
+  );
+
+  const [first, second, height] = lengthTripleInMapUnit(
+    ifcAPI,
+    modelID,
+    parameters,
+    setup.mapUnitMetresPerUnit,
+  );
+
+  // IfcRigidOperation(SourceCRS, TargetCRS, FirstCoordinate,
+  //                   SecondCoordinate, Height?)
+  // Height is optional per spec. We always emit it for round-trip
+  // symmetry with the reader (which defaults missing Height to 0 in
+  // metres anyway); omitting it on a 0-height fixture would change the
+  // entity's STEP arity across save → reload for no benefit.
+  const rigidOperation = ifcAPI.CreateIfcEntity(
+    modelID,
+    IFCRIGIDOPERATION,
+    new Handle(setup.sourceContextID),
+    setup.projectedCRS,
+    first,
+    second,
+    height,
+  );
+
+  ifcAPI.WriteLine(modelID, rigidOperation);
+}
+
+/**
+ * Build the three `IfcLengthMeasure` handles the IFC4+ writers feed into
+ * IfcMapConversion's (E, N, H), IfcMapConversionScaled's (E, N, H), and
+ * IfcRigidOperation's (FirstCoordinate, SecondCoordinate, Height). All
+ * three entities place these fields at the same MapUnit boundary, so
+ * the divide-by-MapUnit conversion is identical — and was previously
+ * inlined verbatim three times.
+ */
+function lengthTripleInMapUnit(
+  ifcAPI: IfcAPI,
+  modelID: number,
+  parameters: HelmertParams,
+  mapUnitMetresPerUnit: number,
+): [first: any, second: any, height: any] {
+  return [
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.easting / mapUnitMetresPerUnit,
+    ),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.northing / mapUnitMetresPerUnit,
+    ),
+    ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      parameters.height / mapUnitMetresPerUnit,
+    ),
+  ];
 }
 
 interface Ifc4WriteSetup {
@@ -536,17 +730,28 @@ function setupIfc4GeorefWrite(
 }
 
 /**
- * Delete existing IfcMapConversion (and the IFC 4.3 IfcMapConversionScaled
- * subtype, via includeInherited) and IfcProjectedCRS entities from an IFC4+
- * model so a subsequent write doesn't create duplicates.
+ * Delete every IfcCoordinateOperation entity (IfcMapConversion, IFC 4.3
+ * IfcMapConversionScaled subtype via includeInherited, and IFC 4.3
+ * IfcRigidOperation as a sibling) plus IfcProjectedCRS, so a subsequent
+ * write doesn't leave duplicate or orphaned operations.
+ *
+ * RigidOp deletion fires on every IFC4+ write regardless of whether the
+ * file had one — `GetLineIDsWithType` for IFCRIGIDOPERATION returns 0 on
+ * pre-4.3 schemas, so the loop is a safe no-op. This keeps the "write
+ * MapConversion to a file that had RigidOp + edited rotation" case clean:
+ * the stale RigidOp doesn't survive to confuse the next reader.
  */
 function removeExistingGeorefIfc4(ifcAPI: IfcAPI, modelID: number): void {
-  // Delete IfcMapConversion first (it references IfcProjectedCRS). The
-  // includeInherited flag ensures IfcMapConversionScaled instances are
-  // collected in the same query.
+  // Delete CoordinateOperation entities first (they reference
+  // IfcProjectedCRS). includeInherited on the MapConversion query brings
+  // in IfcMapConversionScaled instances.
   const mcIds = ifcAPI.GetLineIDsWithType(modelID, IFCMAPCONVERSION, true);
   for (let index = 0; index < mcIds.size(); index++) {
     ifcAPI.DeleteLine(modelID, mcIds.get(index));
+  }
+  const rigidIds = ifcAPI.GetLineIDsWithType(modelID, IFCRIGIDOPERATION);
+  for (let index = 0; index < rigidIds.size(); index++) {
+    ifcAPI.DeleteLine(modelID, rigidIds.get(index));
   }
   const crsIds = ifcAPI.GetLineIDsWithType(modelID, IFCPROJECTEDCRS);
   for (let index = 0; index < crsIds.size(); index++) {
@@ -577,12 +782,15 @@ function findPreservableMapUnit(
   ifcAPI: IfcAPI,
   modelID: number,
 ): { expressID: number; metresPerUnit: number } | null {
-  const ids = ifcAPI.GetLineIDsWithType(modelID, IFCMAPCONVERSION, true);
-  const mc = firstResolvableLine(ifcAPI, modelID, ids, /* flatten */ true);
-  if (!mc) {
-    return null;
-  }
-  const target = mc.TargetCRS;
+  // Prefer the MapConversion's TargetCRS (the common case). Fall back to
+  // IfcRigidOperation's TargetCRS for RigidOp-only files (IFC 4.3) — the
+  // entity sits under the same IfcCoordinateOperation umbrella and points
+  // at the same IfcProjectedCRS shape, so the MapUnit handle is equally
+  // valid to preserve. GetLineIDsWithType returns 0 entries on pre-4.3
+  // schemas, so the RigidOp branch is a safe no-op on older files.
+  const target =
+    findFirstTargetCrs(ifcAPI, modelID, IFCMAPCONVERSION, /* inherited */ true)
+    ?? findFirstTargetCrs(ifcAPI, modelID, IFCRIGIDOPERATION, false);
   const mapUnit = target?.MapUnit;
   if (!mapUnit) {
     return null;
@@ -601,6 +809,23 @@ function findPreservableMapUnit(
     return null;
   }
   return { expressID, metresPerUnit };
+}
+
+/**
+ * First-resolvable TargetCRS of the given IfcCoordinateOperation subtype.
+ * Returns null when no entity exists or the entity carries no TargetCRS.
+ * Shared by `findPreservableMapUnit` so both MapConversion and RigidOp
+ * paths use the same flatten-and-extract logic.
+ */
+function findFirstTargetCrs(
+  ifcAPI: IfcAPI,
+  modelID: number,
+  typeId: number,
+  includeInherited: boolean,
+): any {
+  const ids = ifcAPI.GetLineIDsWithType(modelID, typeId, includeInherited);
+  const op = firstResolvableLine(ifcAPI, modelID, ids, /* flatten */ true);
+  return op?.TargetCRS ?? null;
 }
 
 /**

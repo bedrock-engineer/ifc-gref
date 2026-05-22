@@ -121,8 +121,7 @@ export function AnchorCard({
           </p>
           <p>
             Edit the fields directly, or click <strong>Pick on map</strong>{" "}
-            and click a location to set Easting/Northing from there. Height
-            is queried from terrain when available.
+            and click a location to set Easting/Northing from there. 
           </p>
           <p>
             <strong>Reset to file</strong> restores the values from the

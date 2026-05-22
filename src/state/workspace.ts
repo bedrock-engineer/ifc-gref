@@ -12,14 +12,15 @@ import {
   okAsync,
   type Result,
 } from "neverthrow";
+
 import {
-  type CrsDef,
-  type CrsError,
-  type TransformError,
   lookupCrs,
   parseEpsgCode,
   transformProjectedToWgs84,
   transformWgs84ToProjected,
+  type CrsDef,
+  type CrsError,
+  type TransformError,
 } from "#modules/crs";
 import {
   solveSinglePointFallback,
@@ -30,6 +31,7 @@ import {
   type XYZ,
 } from "#modules/helmert/solve";
 import type { ExistingGeoref, IfcMetadata } from "#modules/ifc/worker";
+import { selectWriteTarget } from "#modules/ifc/worker/georef/select-target";
 
 /**
  * Where a value in the sidebar came from. Displayed as a badge on each
@@ -378,4 +380,50 @@ export function applyPickedAnchor(arguments_: {
       { trueNorthRotation: trueNorthRotation(metadata.trueNorth) },
     ),
   );
+}
+
+/**
+ * Predict which entity the writer will emit for the current (schema ×
+ * original-file-state × params) triple, so the SaveCard can show a live
+ * "Will write" indicator that updates as the user edits rotation/scale.
+ *
+ * Shares `selectWriteTarget` with the worker dispatcher — the two
+ * cannot drift on rule changes. Returns null when there are no params
+ * to save (no anchor yet); the indicator stays hidden in that case.
+ *
+ * Side effects are derived here (not in `selectWriteTarget`) because they
+ * depend on file state the dispatcher doesn't need — RefLat/RefLon sync
+ * fires iff the file has an IfcSite. See `SiteReferenceSync` for why
+ * RefElevation is deliberately excluded.
+ */
+export interface PredictedWriteEntity {
+  /** "IfcRigidOperation" / "IfcMapConversion" / "IfcMapConversionScaled" / "ePset_MapConversion". */
+  entityName: string;
+  /** Short qualifier shown next to the entity name, or empty when none. */
+  note: string;
+  /**
+   * Side-effect clauses the writer will also perform. Rendered separated
+   * by middle dots after the primary entity in the indicator. Empty when
+   * there are no side effects to disclose (e.g. files without an IfcSite
+   * — the worker's `syncSiteReference` no-ops there).
+   */
+  sideEffects: ReadonlyArray<string>;
+}
+
+export function predictWriteEntity(
+  metadata: IfcMetadata,
+  parameters: HelmertParams | null,
+): PredictedWriteEntity | null {
+  if (!parameters) {
+    return null;
+  }
+  const target = selectWriteTarget({
+    schema: metadata.schema,
+    params: parameters,
+    fileHadRigidOperation: metadata.rawRigidOperation !== null,
+  });
+  const sideEffects = metadata.rawSite
+    ? ["syncs IfcSite RefLat/RefLon"]
+    : [];
+  return { entityName: target.entity, note: target.note, sideEffects };
 }

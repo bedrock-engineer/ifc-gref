@@ -16,6 +16,7 @@ import { unitToMetres } from "#modules/units/convert";
 import { isValidLatLon } from "#lib/validators";
 import { getApi } from "./api";
 import {
+  type ActiveCoordinateOperation,
   type ExistingGeoref,
   type MapConversionStatus,
   type RawMapConversion,
@@ -141,6 +142,8 @@ export interface IfcMetadata {
   mapConversionStatus: MapConversionStatus;
   /** Verbatim-from-file IfcRigidOperation fields (IFC 4.3+ only). */
   rawRigidOperation: RawRigidOperation | null;
+  /** Which IfcCoordinateOperation subtype drove `existingGeoref`. */
+  activeCoordinateOperation: ActiveCoordinateOperation;
 }
 
 /**
@@ -180,8 +183,20 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
     });
   }
 
-  const georef = readExistingGeoref(ifcAPI, modelID, schema, ifcMetresPerUnit);
+  // Read context first so the georef reader can use TrueNorth as the
+  // rotation seed for the IfcRigidOperation fallback path (4.3 only).
   const context = findGeometricContext(ifcAPI, modelID, project);
+  const trueNorth = readTrueNorth(context);
+  const trueNorthRotation = trueNorth
+    ? Math.atan2(trueNorth.abscissa, trueNorth.ordinate)
+    : 0;
+  const georef = readExistingGeoref(
+    ifcAPI,
+    modelID,
+    schema,
+    ifcMetresPerUnit,
+    trueNorthRotation,
+  );
   const metadata: IfcMetadata = {
     schema,
     siteReference: readSiteReference(site, ifcMetresPerUnit),
@@ -189,7 +204,7 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
     localOrigin: readLocalOrigin(site, ifcMetresPerUnit),
     lengthUnit,
     metresPerUnit: ifcMetresPerUnit,
-    trueNorth: readTrueNorth(context),
+    trueNorth,
     rawGeometricRepresentationContext: readRawGeometricRepresentationContext(
       context,
       ifcMetresPerUnit,
@@ -201,6 +216,7 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
     rawMapConversion: georef.rawMapConversion,
     mapConversionStatus: georef.mapConversionStatus,
     rawRigidOperation: georef.rawRigidOperation,
+    activeCoordinateOperation: georef.activeCoordinateOperation,
   };
 
   emitLog({

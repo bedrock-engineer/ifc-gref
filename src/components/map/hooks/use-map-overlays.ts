@@ -53,8 +53,15 @@ export function useMapOverlays(
         mapConversionMarkerRef,
         signals.mapConversion,
         "mapConversion",
+        signals.coordinateOperationLabel,
       );
-      syncMarker(map, siteMarkerRef, signals.siteReference, "siteReference");
+      syncMarker(
+        map,
+        siteMarkerRef,
+        signals.siteReference,
+        "siteReference",
+        "IfcSite",
+      );
       syncFootprint(map, signals.footprint);
       syncSpaces(map, showSpaces ? signals.spaces : null);
     });
@@ -79,14 +86,19 @@ function syncMarker(
   markerRef: RefObject<Marker | null>,
   point: LngLat | null,
   source: "mapConversion" | "siteReference",
+  label: string,
 ): void {
   if (point) {
     const lngLat: [number, number] = [point.longitude, point.latitude];
     if (markerRef.current) {
       markerRef.current.setLngLat(lngLat);
+      // Keep label fresh: a metadata refresh (sidecar apply, repair-baked-
+      // origin) can swap the active coordinate-operation entity without
+      // tearing the marker down, so update the rendered text in place.
+      updateMarkerLabel(markerRef.current, label);
     } else {
       markerRef.current = new maplibregl.Marker({
-        element: createMarkerElement(source),
+        element: createMarkerElement(source, label),
         // Anchor at the icon's centre. The label is absolute-positioned
         // outside the layout box, so it doesn't shift the anchor.
         anchor: "center",
@@ -101,6 +113,22 @@ function syncMarker(
 }
 
 /**
+ * Patch the rendered label on an existing marker. The label is a
+ * `<span data-marker-label>` inside the marker element built by
+ * `createMarkerElement`. Marker → element accessor is `getElement()` on
+ * maplibre's Marker. No-op when the span isn't found (defensive — keeps
+ * the marker functional even if the DOM is unexpectedly altered).
+ */
+function updateMarkerLabel(marker: Marker, labelText: string): void {
+  const span = marker
+    .getElement()
+    .querySelector<HTMLSpanElement>('[data-marker-label="true"]');
+  if (span && span.textContent !== labelText) {
+    span.textContent = labelText;
+  }
+}
+
+/**
  * Build the marker DOM: a 20×20 wrapper containing the SVG glyph, with a
  * small absolutely-positioned label hanging below. Absolute positioning
  * keeps the label out of the wrapper's layout box, so MapLibre's `center`
@@ -109,6 +137,7 @@ function syncMarker(
  */
 function createMarkerElement(
   source: "mapConversion" | "siteReference",
+  labelText: string,
 ): HTMLDivElement {
   const wrapper = document.createElement("div");
   wrapper.style.position = "relative";
@@ -119,8 +148,8 @@ function createMarkerElement(
   wrapper.append(createGlyph(source));
 
   const label = document.createElement("span");
-  label.textContent =
-    source === "mapConversion" ? "IfcMapConversion" : "IfcSite";
+  label.textContent = labelText;
+  label.dataset.markerLabel = "true";
   label.style.position = "absolute";
   label.style.top = "100%";
   label.style.left = "50%";

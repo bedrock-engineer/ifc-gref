@@ -144,6 +144,30 @@ export function applyHelmert(local: XYZ, parameters: HelmertParams): XYZ {
 }
 
 /**
+ * True when `parameters` represent a pure translation — zero rotation, unit
+ * scales on every axis — within a tight floating-point tolerance. Drives
+ * the IFC 4.3 `IfcRigidOperation` preserve-on-save path: the worker
+ * dispatcher only preserves the entity type when this predicate holds, and
+ * the save-card "Will write" indicator uses the same predicate to predict
+ * the writer's choice.
+ *
+ * Tolerances are noise thresholds (1e-9), not user-meaningful precision —
+ * any deliberate edit (a single drag in the rotation card, any non-1
+ * scale entered manually) crosses them by many orders of magnitude.
+ */
+const ROTATION_EPSILON = 1e-9;
+const SCALE_EPSILON = 1e-9;
+
+export function isPureTranslation(parameters: HelmertParams): boolean {
+  return (
+    Math.abs(parameters.rotation) < ROTATION_EPSILON
+    && Math.abs(parameters.xScale - 1) < SCALE_EPSILON
+    && Math.abs(parameters.yScale - 1) < SCALE_EPSILON
+    && Math.abs(parameters.zScale - 1) < SCALE_EPSILON
+  );
+}
+
+/**
  * Per-point misfit between a target and where the current Helmert
  * transform maps the local point. `magnitudeXY` is precomputed because
  * every consumer wants it (worst-point ranking, table sort, map labels).

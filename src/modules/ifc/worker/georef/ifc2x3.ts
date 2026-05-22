@@ -5,7 +5,6 @@
 */
 
 import {
-  type IfcAPI,
   Handle,
   IFCIDENTIFIER,
   IFCLABEL,
@@ -14,9 +13,11 @@ import {
   IFCPROPERTYSINGLEVALUE,
   IFCREAL,
   IFCRELDEFINESBYPROPERTIES,
+  type IfcAPI,
 } from "web-ifc";
-import type { HelmertParams } from "#modules/helmert/solve";
+
 import { emitLog } from "#lib/log";
+import type { HelmertParams } from "#modules/helmert/solve";
 import {
   buildHelmertFromFields,
   expressIDOf,

@@ -9,6 +9,7 @@ export { extractFootprint } from "./footprint";
 export { extractMeshes, type MeshExtract } from "./meshes";
 export { extractSpaces, type SpaceExtract } from "./spaces";
 export {
+  type ActiveCoordinateOperation,
   type ExistingGeoref,
   type MapConversionStatus,
   type RawMapConversion,

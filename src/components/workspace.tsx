@@ -36,6 +36,7 @@ import {
   anchorSurveyPoints,
   initialAnchor,
   makeAnchorReducer,
+  predictWriteEntity,
 } from "#state/workspace";
 import { MapView, type MapViewHandle } from "./map/map-view";
 import { AnchorCard } from "./sidebar/cards/anchor-card";
@@ -150,6 +151,7 @@ export function Workspace({
   // each call `frameNow` directly. The two effects below cover data-arrival
   // syncs that don't have an event source — `effectiveParameters` arriving
   // from CRS-driven seeding, and `footprintLocal` resolving from the worker.
+  const coordinateOperationLabel = deriveCoordinateOperationLabel(metadata);
   const overlaySignals = useMemo<MapOverlaySignals>(
     () =>
       deriveOverlaySignals({
@@ -158,8 +160,16 @@ export function Workspace({
         activeCrs,
         footprintLocal,
         spacesLocal,
+        coordinateOperationLabel,
       }),
-    [references, effectiveParameters, activeCrs, footprintLocal, spacesLocal],
+    [
+      references,
+      effectiveParameters,
+      activeCrs,
+      footprintLocal,
+      spacesLocal,
+      coordinateOperationLabel,
+    ],
   );
 
   const mapViewRef = useRef<MapViewHandle>(null);
@@ -185,6 +195,7 @@ export function Workspace({
       activeCrs,
       footprintLocal,
       spacesLocal,
+      coordinateOperationLabel,
     });
   }
 
@@ -454,6 +465,10 @@ export function Workspace({
             }
             blockedReason={saveBlockedReason}
             warning={saveWarning}
+            predictedWriteEntity={predictWriteEntity(
+              metadata,
+              effectiveParameters,
+            )}
             onWrite={write}
           />
         }
@@ -581,6 +596,26 @@ export function Workspace({
       </section>
     </>
   );
+}
+
+/**
+ * Pick the entity name to render on the coordinate-operation map marker.
+ * Tracks `activeCoordinateOperation`: when IfcRigidOperation drives the
+ * anchor, the marker reads "IfcRigidOperation" rather than the misleading
+ * "IfcMapConversion". For MapConversion-driven and IFC2X3 paths we prefer
+ * the actual entity name (handles IfcMapConversionScaled) and fall back to
+ * the schema-default ePset / native label.
+ */
+function deriveCoordinateOperationLabel(metadata: IfcMetadata): string {
+  if (metadata.activeCoordinateOperation === "rigid-operation") {
+    return "IfcRigidOperation";
+  }
+  if (metadata.rawMapConversion?.entityName) {
+    return metadata.rawMapConversion.entityName;
+  }
+  return metadata.schema === "IFC2X3"
+    ? "ePset_MapConversion"
+    : "IfcMapConversion";
 }
 
 function sidecarErrorMessage(error: SidecarError): string {

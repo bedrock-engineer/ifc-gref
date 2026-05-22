@@ -81,6 +81,6 @@ export async function zeroSitePlacementLocation(
   emitLog({
     source: "worker",
     message:
-      "Zeroed IfcSite.ObjectPlacement.RelativePlacement.Location — baked offset moved to IfcMapConversion",
+      "Zeroed IfcSite.ObjectPlacement.RelativePlacement.Location, baked offset moved to IfcMapConversion",
   });
 }

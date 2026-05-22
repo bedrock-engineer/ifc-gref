@@ -3,22 +3,26 @@
                   @typescript-eslint/no-unsafe-argument,
 */
 
-import { type IfcAPI, IFCLENGTHMEASURE } from "web-ifc";
-import type { HelmertParams } from "#modules/helmert/solve";
+import { IFCLENGTHMEASURE, IFCRIGIDOPERATION, type IfcAPI } from "web-ifc";
+
 import { emitLog } from "#lib/log";
+import type { HelmertParams } from "#modules/helmert/solve";
 import { getApi } from "../api";
 import { deriveIfcMetresPerUnit } from "../metadata";
 import { parseSchema, type IfcSchema } from "../schema";
 import { decimalToDms, findFirstSiteId } from "../shared";
+import { readGeorefIfc2x3, writeGeorefIfc2x3 } from "./ifc2x3";
 import {
   readGeorefIfc4,
   writeGeorefIfc4,
+  writeGeorefIfc4Rigid,
   writeGeorefIfc4Scaled,
 } from "./ifc4";
-import { readGeorefIfc2x3, writeGeorefIfc2x3 } from "./ifc2x3";
+import { selectWriteTarget, type WriteTarget } from "./select-target";
 import type { GeorefRead, SiteReferenceSync } from "./shared";
 
 export type {
+  ActiveCoordinateOperation,
   ExistingGeoref,
   GeorefRead,
   MapConversionStatus,
@@ -26,7 +30,7 @@ export type {
   RawProjectedCrs,
   RawRigidOperation,
   RawSourceCrs,
-  SiteReferenceSync,
+  SiteReferenceSync
 } from "./shared";
 
 /**
@@ -36,17 +40,25 @@ export type {
  * `ifcMetresPerUnit` is the boundary multiplier — IfcLengthMeasure-typed
  * fields (Eastings/Northings/OrthogonalHeight) are scaled to metres here so
  * downstream HelmertParams are unit-free in the codebase-wide canonical.
+ *
+ * `trueNorthRotation` seeds rotation for the IfcRigidOperation fallback
+ * (IFC 4.3 only). RigidOp is translation-only, so when it drives the anchor
+ * we use the file's TrueNorth as the rotation guess — same convention as
+ * the single-point Helmert fallback. Pass 0 when the file has no TrueNorth.
+ * Unused on the MapConversion path (rotation comes from XAxis fields) and
+ * on IFC2X3 (no RigidOp entity).
  */
 export function readExistingGeoref(
   ifcAPI: IfcAPI,
   modelID: number,
   schema: IfcSchema,
   ifcMetresPerUnit: number,
+  trueNorthRotation: number,
 ): GeorefRead {
   if (schema === "IFC2X3") {
     return readGeorefIfc2x3(ifcAPI, modelID, ifcMetresPerUnit);
   }
-  return readGeorefIfc4(ifcAPI, modelID, ifcMetresPerUnit);
+  return readGeorefIfc4(ifcAPI, modelID, ifcMetresPerUnit, trueNorthRotation);
 }
 
 export async function writeMapConversion(
@@ -60,86 +72,130 @@ export async function writeMapConversion(
   const schema = parseSchema(ifcAPI.GetModelSchema(modelID));
   const ifcMetresPerUnit = deriveIfcMetresPerUnit(ifcAPI, modelID);
 
-  // Sync IfcSite.RefLatitude/RefLongitude/RefElevation to the new
-  // MapConversion so Level-20-only consumers see a consistent location,
-  // and so the next re-load of this file doesn't show stale coordinates
-  // from the file's original export.
+  // Sync IfcSite.RefLatitude/RefLongitude to the new MapConversion so
+  // Level-20-only consumers see a consistent location, and so the next
+  // re-load of this file doesn't show stale coordinates from the file's
+  // original export. RefElevation is preserved verbatim (see
+  // `SiteReferenceSync` for the vertical-datum reasoning).
   if (siteReference) {
-    syncSiteReference(ifcAPI, modelID, siteReference, ifcMetresPerUnit);
+    syncSiteReference(ifcAPI, modelID, siteReference);
   }
 
-  const verticalSuffix = verticalDatum ? `, vertical=${verticalDatum}` : "";
+  const fileHadRigidOperation =
+    schema === "IFC4X3" && fileHasRigidOperation(ifcAPI, modelID);
+  const target = selectWriteTarget({
+    schema,
+    params: parameters,
+    fileHadRigidOperation,
+  });
 
-  if (schema === "IFC2X3") {
-    writeGeorefIfc2x3(
-      ifcAPI,
-      modelID,
-      epsgCode,
-      verticalDatum,
-      parameters,
-      ifcMetresPerUnit,
-    );
-    emitLog({
-      source: "worker",
-      message: `Wrote ePset_MapConversion (EPSG:${epsgCode}${verticalSuffix}, scale=${parameters.xScale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad)`,
-    });
-    return;
+  // IFC4+ writers preserve the file's existing IfcProjectedCRS.MapUnit
+  // when present (so a foot-authored file stays foot across save →
+  // reload) and fall back to IfcSIUnit METRE for fresh files. They also
+  // convert canonical-metres E/N/H to MapUnit at the boundary; see
+  // `writeGeorefIfc4` for the formula.
+  switch (target.entity) {
+    case "ePset_MapConversion": {
+      writeGeorefIfc2x3(
+        ifcAPI,
+        modelID,
+        epsgCode,
+        verticalDatum,
+        parameters,
+        ifcMetresPerUnit,
+      );
+      break;
+    }
+    case "IfcMapConversionScaled": {
+      writeGeorefIfc4Scaled(
+        ifcAPI,
+        modelID,
+        epsgCode,
+        verticalDatum,
+        parameters,
+        ifcMetresPerUnit,
+      );
+      break;
+    }
+    case "IfcRigidOperation": {
+      writeGeorefIfc4Rigid(
+        ifcAPI,
+        modelID,
+        epsgCode,
+        verticalDatum,
+        parameters,
+        ifcMetresPerUnit,
+      );
+      break;
+    }
+    case "IfcMapConversion": {
+      writeGeorefIfc4(
+        ifcAPI,
+        modelID,
+        epsgCode,
+        verticalDatum,
+        parameters,
+        ifcMetresPerUnit,
+      );
+      break;
+    }
   }
-  // IFC4+: preserve the file's existing IfcProjectedCRS.MapUnit when
-  // present (so a foot-authored file stays foot across save → reload),
-  // and fall back to a fresh IfcSIUnit METRE for fresh files. The writer
-  // converts canonical-metres E/N/H to the MapUnit at its boundary, and
-  // converts internal (dimensionless) scale → on-disk scale (source unit
-  // ↔ MapUnit ratio); see writeGeorefIfc4 for the formula.
-  //
-  // IFC 4.3 with anisotropic scales: dispatch to IfcMapConversionScaled.
-  // For all other cases (any pre-4.3 schema, or 4.3 with isotropic scales),
-  // plain IfcMapConversion is sufficient and spec-cleaner.
-  const isAnisotropic =
-    parameters.xScale !== parameters.yScale ||
-    parameters.yScale !== parameters.zScale;
 
-  if (schema === "IFC4X3" && isAnisotropic) {
-    writeGeorefIfc4Scaled(
-      ifcAPI,
-      modelID,
-      epsgCode,
-      verticalDatum,
-      parameters,
-      ifcMetresPerUnit,
-    );
-    emitLog({
-      source: "worker",
-      message: `Wrote IfcMapConversionScaled (EPSG:${epsgCode}${verticalSuffix}, xScale=${parameters.xScale.toFixed(6)}, yScale=${parameters.yScale.toFixed(6)}, zScale=${parameters.zScale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad)`,
-    });
-    return;
-  }
-
-  writeGeorefIfc4(
-    ifcAPI,
-    modelID,
-    epsgCode,
-    verticalDatum,
-    parameters,
-    ifcMetresPerUnit,
-  );
   emitLog({
     source: "worker",
-    message: `Wrote IfcMapConversion (EPSG:${epsgCode}${verticalSuffix}, scale=${parameters.xScale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad)`,
+    message: formatWriteOutcome(target, epsgCode, verticalDatum, parameters),
   });
 }
 
+function formatWriteOutcome(
+  target: WriteTarget,
+  epsgCode: number,
+  verticalDatum: string | null,
+  parameters: HelmertParams,
+): string {
+  const verticalSuffix = verticalDatum ? `, vertical=${verticalDatum}` : "";
+  const head = `Wrote ${target.entity} (EPSG:${epsgCode}${verticalSuffix}`;
+  switch (target.entity) {
+    case "IfcRigidOperation": {
+      return `${head}, translation-only, preserving original entity type)`;
+    }
+    case "IfcMapConversionScaled": {
+      return `${head}, xScale=${parameters.xScale.toFixed(6)}, yScale=${parameters.yScale.toFixed(6)}, zScale=${parameters.zScale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad)`;
+    }
+    case "IfcMapConversion": {
+      const body = `scale=${parameters.xScale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad`;
+      const suffix = target.upgradeFromRigid
+        ? "; upgraded from IfcRigidOperation — RigidOp can't carry rotation or scale"
+        : "";
+      return `${head}, ${body}${suffix})`;
+    }
+    case "ePset_MapConversion": {
+      return `${head}, scale=${parameters.xScale.toFixed(6)}, rot=${parameters.rotation.toFixed(4)} rad)`;
+    }
+  }
+}
+
 /**
- * Overwrite IfcSite.RefLatitude/RefLongitude/RefElevation with a lat/lon
- * derived from the new MapConversion. No-op if the model has no IfcSite
- * (IFC4 allows that — MapConversion attaches to the geometric
- * representation context, not the site).
+ * True when the model carries at least one direct IfcRigidOperation entity
+ * (not via inheritance — IfcMapConversion subtypes are queried separately).
+ * Always false on pre-4.3 schemas (the type id resolves but the index
+ * is empty). Cheap; called once per write.
+ */
+function fileHasRigidOperation(ifcAPI: IfcAPI, modelID: number): boolean {
+  return ifcAPI.GetLineIDsWithType(modelID, IFCRIGIDOPERATION).size() > 0;
+}
+
+/**
+ * Overwrite IfcSite.RefLatitude/RefLongitude with a lat/lon derived from
+ * the new MapConversion. No-op if the model has no IfcSite (IFC4 allows
+ * that — MapConversion attaches to the geometric representation context,
+ * not the site). RefElevation is left untouched; see `SiteReferenceSync`
+ * for the vertical-datum reasoning.
  */
 function syncSiteReference(
   ifcAPI: IfcAPI,
   modelID: number,
   ref: SiteReferenceSync,
-  ifcMetresPerUnit: number,
 ): void {
   const siteID = findFirstSiteId(ifcAPI, modelID);
   if (siteID == null) {
@@ -168,16 +224,21 @@ function syncSiteReference(
   // (`type: 10` is the IfcCompoundPlaneAngleMeasure tape-item tag).
   site.RefLatitude = { type: 10, value: decimalToDms(ref.latitude) };
   site.RefLongitude = { type: 10, value: decimalToDms(ref.longitude) };
-  // ref.elevation is canonical metres; IfcLengthMeasure stores in project
-  // units, so divide back by ifcMetresPerUnit (mirrors the read boundary).
-  site.RefElevation = ifcAPI.CreateIfcType(
-    modelID,
-    IFCLENGTHMEASURE,
-    ref.elevation / ifcMetresPerUnit,
-  );
+  // Recreate RefElevation with its existing value: the IfcLengthMeasure
+  // wrapper GetLine returns isn't accepted by the browser-bundled web-ifc's
+  // Embind float.toWireType (ASSERTIONS=1 — Node bundle silently passes
+  // it through), so WriteLine throws "Cannot read properties of undefined
+  // (reading 'name')". CreateIfcType yields a shape the serializer accepts.
+  if (site.RefElevation != null) {
+    site.RefElevation = ifcAPI.CreateIfcType(
+      modelID,
+      IFCLENGTHMEASURE,
+      Number(site.RefElevation.value),
+    );
+  }
   ifcAPI.WriteLine(modelID, site);
   emitLog({
     source: "worker",
-    message: `Synced IfcSite ref to ${ref.latitude.toFixed(6)},${ref.longitude.toFixed(6)} (elev ${ref.elevation.toFixed(3)} m)`,
+    message: `Synced IfcSite RefLat/RefLon to ${ref.latitude.toFixed(6)},${ref.longitude.toFixed(6)} (RefElevation left unchanged — vertical datum unknown)`,
   });
 }

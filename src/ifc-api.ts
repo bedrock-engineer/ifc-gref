@@ -6,7 +6,7 @@ import type { IfcWorkerApi } from "./worker/ifc-worker";
 
 /**
  * Lazy-instantiated IfcFacade backed by a web-ifc Web Worker.
- * The facade manages the active modelID internally — callers never
+ * The facade manages the active modelID internally, callers never
  * see it. Swap the implementation here to switch IFC backends.
  */
 

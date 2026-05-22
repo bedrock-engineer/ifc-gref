@@ -1,3 +1,4 @@
+import type { PredictedWriteEntity } from "#state/workspace";
 import { Button } from "../../input/button";
 
 interface SaveCardProps {
@@ -19,19 +20,29 @@ interface SaveCardProps {
    * subsumes it.
    */
   warning?: string | null;
+  /**
+   * Live prediction of which entity the writer will emit, derived from
+   * the current params + original file state. Hidden when null (no anchor
+   * yet, or save is blocked for a reason that subsumes the indicator).
+   * Updates as the user edits rotation/scale — flips between
+   * IfcRigidOperation and IfcMapConversion when the params cross the
+   * pure-translation threshold.
+   */
+  predictedWriteEntity?: PredictedWriteEntity | null;
   onWrite: () => void;
 }
 
 /**
  * Pinned action strip at the bottom of the sidebar. Lives outside the scroll
  * region so the download action is always reachable when the sidebar content
- * overflows. Writes IfcMapConversion and triggers the browser download.
+ * overflows. Writes the predicted entity and triggers the browser download.
  */
 export function SaveCard({
   busy,
   canWrite,
   blockedReason,
   warning,
+  predictedWriteEntity,
   onWrite,
 }: SaveCardProps) {
   return (
@@ -45,6 +56,17 @@ export function SaveCard({
           {warning}
         </p>
       ) : null}
+      {predictedWriteEntity && !blockedReason && (
+        <p className="text-xs text-slate-500">
+          Will write: <span className="font-medium text-slate-700">{predictedWriteEntity.entityName}</span>
+          {predictedWriteEntity.note && (
+            <span className="text-slate-400"> ({predictedWriteEntity.note})</span>
+          )}
+          {predictedWriteEntity.sideEffects.map((effect) => (
+            <span key={effect} className="text-slate-400"> · {effect}</span>
+          ))}
+        </p>
+      )}
       <Button
         variant="primary"
         size="md"
