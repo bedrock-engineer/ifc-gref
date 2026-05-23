@@ -5,6 +5,7 @@ import { STYLE } from "../style";
 
 export interface MapPortals {
   viewToggle: HTMLDivElement;
+  navHelp: HTMLDivElement;
   layers: HTMLDivElement;
   search: HTMLDivElement;
   zoomToModel: HTMLDivElement;
@@ -46,7 +47,13 @@ export function useMapInit(
         center: [5.291, 52.132],
         zoom: 6,
       });
-      map.addControl(new maplibregl.NavigationControl(), "top-right");
+      map.addControl(
+        new maplibregl.NavigationControl({
+          visualizePitch: true,
+          visualizeRoll: true,
+        }),
+        "top-right",
+      );
       map.addControl(
         new maplibregl.ScaleControl({ unit: "metric" }),
         "bottom-left",
@@ -54,6 +61,7 @@ export function useMapInit(
 
       const zoomToModel = new PortalControl();
       const viewToggle = new PortalControl();
+      const navHelp = new PortalControl();
       const layers = new PortalControl();
       const search = new PortalControl();
 
@@ -61,6 +69,7 @@ export function useMapInit(
       map.addControl(viewToggle, "top-right");
       map.addControl(search, "top-left");
       map.addControl(layers, "top-right");
+      map.addControl(navHelp, "bottom-right");
 
       mapRef.current = map;
 
@@ -71,6 +80,7 @@ export function useMapInit(
       // eslint-disable-next-line @eslint-react/set-state-in-effect
       setPortals({
         viewToggle: viewToggle.element,
+        navHelp: navHelp.element,
         layers: layers.element,
         search: search.element,
         zoomToModel: zoomToModel.element,

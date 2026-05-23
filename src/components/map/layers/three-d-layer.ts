@@ -105,6 +105,22 @@ export interface ThreeDLayer {
   ): void;
   /** Toggle visibility of IfcSpace meshes (translucent room volumes). */
   setSpacesVisible(visible: boolean): void;
+  /**
+   * Toggle "see-through-terrain" rendering. When on, the layer clears the
+   * depth buffer before rendering its scene, so MapLibre's terrain mesh
+   * doesn't occlude IFC geometry that sits below ground (basements,
+   * pilings). The IFC still depth-tests against its own fragments so the
+   * model looks correct against itself.
+   *
+   * Trade-off: with the depth buffer wiped, the IFC also draws on top of
+   * any other 3D custom layers rendered before it (notably the 3D BAG
+   * layer when its overlay is enabled). Acceptable because transparent
+   * mode and 3D BAG are different verification flows — sub-ground IFC
+   * detail vs. surrounding building context.
+   *
+   * Driven by the "X-ray" toggle in the Layers panel.
+   */
+  setTransparentMode(transparent: boolean): void;
   dispose(): void;
 }
 
@@ -310,6 +326,7 @@ export function createThreeDLayer(): ThreeDLayer {
   // their THREE.Object3D.visible flag without walking modelGroup every call.
   const spaceMeshes: Array<THREE.Mesh> = [];
   let spacesVisible = true;
+  let transparentMode = false;
 
   const layer: maplibregl.CustomLayerInterface = {
     id,
@@ -379,6 +396,14 @@ export function createThreeDLayer(): ThreeDLayer {
         diagnosticFramesLogged += 1;
       }
       camera.projectionMatrix = combined;
+      // Wipe MapLibre's depth contribution (terrain, raster overlays, custom
+      // layers rendered earlier in the frame) when transparent mode is on, so
+      // sub-ground IFC fragments aren't depth-clipped by the terrain mesh.
+      // Three.js then writes/reads its own depth as usual, so the IFC remains
+      // self-consistent (no z-fighting against itself).
+      if (transparentMode) {
+        renderer.clearDepth();
+      }
       renderer.resetState();
       renderer.render(scene, camera);
       mapReference.triggerRepaint();
@@ -483,6 +508,14 @@ export function createThreeDLayer(): ThreeDLayer {
       for (const mesh of spaceMeshes) {
         mesh.visible = visible;
       }
+      mapReference?.triggerRepaint();
+    },
+
+    setTransparentMode(transparent) {
+      if (transparentMode === transparent) {
+        return;
+      }
+      transparentMode = transparent;
       mapReference?.triggerRepaint();
     },
 

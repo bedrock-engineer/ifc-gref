@@ -15,6 +15,7 @@ import type { HelmertParams, PointPair } from "#modules/helmert/solve";
 import type { MapOverlaySignals } from "#state/georef-status/types";
 import { useStickyState } from "../../lib/use-sticky-state";
 import { LayersPanel } from "./controls/layers-panel";
+import { NavHelp } from "./controls/nav-help";
 import { SearchBox } from "./controls/search-box";
 import { useMapScope } from "./controls/use-scope";
 import { ViewToggle, type ViewMode } from "./controls/view-toggle";
@@ -147,7 +148,9 @@ export function MapView({
     "ifcgref:show-spaces:v1",
     true,
   );
-  const [transparentBasemap, setTransparentBasemap] = useStickyState<boolean>(
+  // Storage key keeps its legacy name so existing user preferences survive
+  // the rename. The feature is exposed as "X-ray" in the UI.
+  const [xray, setXray] = useStickyState<boolean>(
     "ifcgref:transparent-basemap:v1",
     false,
   );
@@ -210,13 +213,12 @@ export function MapView({
     parameters,
     activeCrs,
     showSpaces,
-    transparentBasemap,
+    xray,
   });
   useMapLayers(mapRef, {
     basemap,
     overlays,
     customBasemaps,
-    transparentBasemap,
   });
   useAnchorPicker(mapRef, isPickingAnchor, onAnchorPicked, onCancelPickAnchor);
 
@@ -245,6 +247,8 @@ export function MapView({
             portals.viewToggle,
           )}
 
+          {createPortal(<NavHelp />, portals.navHelp)}
+
           {createPortal(
             <LayersPanel
               basemap={basemap}
@@ -253,9 +257,10 @@ export function MapView({
               scope={scope}
               hasSpaces={hasSpaces}
               showSpaces={showSpaces}
-              transparentBasemap={transparentBasemap}
+              xray={xray}
+              isThreeD={effectiveView === "3d"}
               onShowSpacesChange={setShowSpaces}
-              onTransparentBasemapChange={setTransparentBasemap}
+              onXrayChange={setXray}
               onBasemapChange={setBasemap}
               onOverlaysChange={setOverlays}
               onAddCustomBasemap={handleAddCustomBasemap}

@@ -2,7 +2,25 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./app.tsx";
+import { emitLog } from "#lib/log";
 import { prefetchCrsManifest } from "#modules/crs";
+
+// Safety net for promise rejections nobody caught. User-action flows
+// (Save, repair, sidecar apply) keep their inline try/catch — they need
+// per-card UX feedback the global listener can't give. This catches the
+// rest: forgotten `.catch` in new code, background work that rejected
+// unexpectedly, anything that would otherwise be a silent dead operation.
+// Routes to the ops panel; console.error preserves the stack for the
+// (BIM-pro) user who's debugging their own file.
+window.addEventListener("unhandledrejection", (event) => {
+  event.preventDefault();
+  const reason = event.reason;
+  console.error(reason);
+  emitLog({
+    level: "error",
+    message: `Unhandled error: ${reason instanceof Error ? reason.message : String(reason)}`,
+  });
+});
 
 void prefetchCrsManifest();
 

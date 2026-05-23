@@ -1,5 +1,6 @@
 import {
   GitHubLogoIcon,
+  UploadIcon,
   //  QuestionMarkCircledIcon
 } from "@radix-ui/react-icons";
 import {
@@ -90,6 +91,7 @@ export function Header({ filename, onFile }: HeaderProps) {
           }}
         >
           <Button variant="secondary" size="md" className="ml-2">
+            <UploadIcon />
             {filename ? "Load different IFC file" : "Load IFC file"}
           </Button>
         </FileTrigger>

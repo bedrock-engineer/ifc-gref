@@ -29,7 +29,7 @@ export const MAPTERHORN_TERRAIN: SourceSpecification = {
   tiles: ["https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"],
   tileSize: 512,
   encoding: "terrarium",
-  maxzoom: 17,
+  maxzoom: 14,
   attribution:
     '© <a href="https://mapterhorn.com/">Mapterhorn</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)',
 };

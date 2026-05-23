@@ -1,4 +1,5 @@
 import type { PredictedWriteEntity } from "#state/workspace";
+import { DownloadIcon } from "@radix-ui/react-icons";
 import { Button } from "../../input/button";
 
 interface SaveCardProps {
@@ -58,12 +59,21 @@ export function SaveCard({
       ) : null}
       {predictedWriteEntity && !blockedReason && (
         <p className="text-xs text-slate-500">
-          Will write: <span className="font-medium text-slate-700">{predictedWriteEntity.entityName}</span>
+          Will write:{" "}
+          <span className="font-medium text-slate-700">
+            {predictedWriteEntity.entityName}
+          </span>
           {predictedWriteEntity.note && (
-            <span className="text-slate-400"> ({predictedWriteEntity.note})</span>
+            <span className="text-slate-400">
+              {" "}
+              ({predictedWriteEntity.note})
+            </span>
           )}
           {predictedWriteEntity.sideEffects.map((effect) => (
-            <span key={effect} className="text-slate-400"> · {effect}</span>
+            <span key={effect} className="text-slate-400">
+              {" "}
+              · {effect}
+            </span>
           ))}
         </p>
       )}
@@ -74,7 +84,20 @@ export function SaveCard({
         isDisabled={!canWrite || busy}
         className="w-full"
       >
-        {busy ? "Preparing download…" : "Download georeferenced IFC"}
+        {busy ? (
+          <>
+            Preparing download…
+            <span
+              aria-hidden
+              className="size-3 animate-spin rounded-full border-2 border-white/30 border-t-white"
+            />
+          </>
+        ) : (
+          <>
+            <DownloadIcon />
+            Download georeferenced IFC 
+          </>
+        )}
       </Button>
     </div>
   );

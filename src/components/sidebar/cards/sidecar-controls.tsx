@@ -26,7 +26,7 @@ export function SidecarControls({
 }: SidecarControlsProps) {
   return (
     <div className="flex gap-2 border-t border-slate-100 pt-2">
-      <SidecarTooltip text="Download the current IfcProjectedCRS and IfcMapConversion as a .ifcgref.json sidecar, ready to apply to another IFC file in this app.">
+      <SidecarTooltip text="Download the current IfcProjectedCRS and IfcMapConversion as a .ifcgref.json file, ready to apply to another IFC file in this app.">
         <Button
           variant="secondary"
           size="sm"
@@ -48,7 +48,7 @@ export function SidecarControls({
           }
         }}
       >
-        <SidecarTooltip text="Load a previously saved .ifcgref.json sidecar and apply its CRS and anchor to this file.">
+        <SidecarTooltip text="Load a previously saved .ifcgref.json file and apply its CRS and anchor to this file.">
           <Button variant="secondary" size="sm" className="flex-1">
             <UploadIcon />
             Apply .ifcgref.json

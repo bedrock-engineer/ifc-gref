@@ -1,22 +1,8 @@
-import type { RefObject } from "react";
 import type { Map as MlMap } from "maplibre-gl";
 import { projectLocalToWgs84, type CrsDef } from "#modules/crs";
 import type { HelmertParams, XYZ } from "#modules/helmert/solve";
 import { emitLog } from "../../lib/log";
 import type { ThreeDLayer } from "./layers/three-d-layer";
-
-interface ApplyAnchorOptions {
-  flyCamera: boolean;
-  /** When true, terrain has been removed and the basemap raster renders
-   *  flat at altitude 0. The model is then placed relative to a captured
-   *  `OrthogonalHeight` baseline instead of its absolute altitude. */
-  transparentBasemap: boolean;
-  /** Holds the `parameters.height` captured the first time the model is
-   *  anchored in transparent mode. Subsequent OrthogonalHeight edits
-   *  move the model 1:1 relative to that baseline. Reset to null by
-   *  the caller when transparent mode is toggled off. */
-  transparentBaseline: RefObject<number | null>;
-}
 
 /**
  * Project the mesh centroid through the Helmert transform + proj4 to get the
@@ -37,7 +23,7 @@ export function applyAnchor(
   activeCrs: CrsDef,
   map: MlMap,
   meshOrigin: XYZ,
-  options: ApplyAnchorOptions,
+  flyCamera: boolean,
 ): void {
   // Both meshOrigin (web-ifc auto-converts to metres) and parameters
   // (canonical metres — see modules/helmert/solve.ts) are in metres. The proj4
@@ -55,38 +41,26 @@ export function applyAnchor(
     return;
   }
   const ll = result.value;
-  // MapLibre's MercatorCoordinate altitude is absolute (above the
-  // ellipsoid, NOT relative to terrain).
+  // MapLibre's MercatorCoordinate altitude is absolute (above the ellipsoid,
+  // NOT relative to terrain).
   //
-  // Three modes:
+  // Two modes:
   //
-  // 1. Opaque, with OrthogonalHeight: trust `parameters.height` as the
-  //    absolute height in the target CRS's vertical datum. Terrain is
-  //    rendered, so the model lines up with it on a correctly georef'd
-  //    file.
+  // 1. OrthogonalHeight set: trust `parameters.height` as the absolute height
+  //    in the target CRS's vertical datum. Terrain is rendered, so the model
+  //    lines up with it on a correctly georef'd file.
   //
-  // 2. Opaque, no OrthogonalHeight (IfcSite-only mode): sample
-  //    Mapterhorn at the anchor to land the model on terrain visually
-  //    so horizontal placement is verifiable. The sample never feeds
-  //    back into parameters.height — vertical datums vary across DEM
-  //    sources and we don't want to invent authority. User refines
-  //    OrthogonalHeight by hand in the anchor card.
+  // 2. No OrthogonalHeight (IfcSite-only mode): sample Mapterhorn at the
+  //    anchor to land the model on terrain visually so horizontal placement
+  //    is verifiable. The sample never feeds back into parameters.height —
+  //    vertical datums vary across DEM sources and we don't want to invent
+  //    authority. User refines OrthogonalHeight by hand in the anchor card.
   //
-  // 3. Transparent: terrain has been dropped by `useMapLayers` so the
-  //    basemap renders flat at altitude 0. We capture
-  //    `parameters.height` on the first transparent-mode anchor and
-  //    place the model relative to that baseline, so the model sits on
-  //    the flat basemap while OrthogonalHeight edits still shift it
-  //    1:1. The baseline resets when transparent mode is toggled off.
+  // Transparent-basemap mode is handled inside the 3D layer (depth-clear)
+  // rather than here, so this function stays altitude-mode oblivious.
   let baseAltitude: number;
   let altitudeSource: string;
-  if (options.transparentBasemap) {
-    if (options.transparentBaseline.current === null) {
-      options.transparentBaseline.current = parameters.height;
-    }
-    baseAltitude = parameters.height - options.transparentBaseline.current;
-    altitudeSource = "transparent-baseline";
-  } else if (parameters.height === 0) {
+  if (parameters.height === 0) {
     baseAltitude =
       map.queryTerrainElevation([ll.longitude, ll.latitude]) ?? 0;
     altitudeSource = "terrain";
@@ -99,7 +73,7 @@ export function applyAnchor(
     { lng: ll.longitude, lat: ll.latitude, altitude: absoluteAltitude },
     parameters,
   );
-  if (options.flyCamera) {
+  if (flyCamera) {
     map.flyTo({
       center: [ll.longitude, ll.latitude],
       zoom: Math.max(map.getZoom(), 17),

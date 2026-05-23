@@ -9,6 +9,7 @@ import {
   ListBoxItem,
   ListLayout,
   Popover,
+  Text,
   Virtualizer,
   type Key,
 } from "react-aria-components";
@@ -85,19 +86,6 @@ export function VerticalDatumPicker({
 
   return (
     <div className="mt-3 flex flex-col gap-1">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs text-slate-600">
-          Vertical datum (required for 3D)
-        </Label>
-      </div>
-
-      {isMissing && (
-        <p className="text-[11px] text-amber-700">
-          Horizontal CRS alone is ambiguous in 3D contexts. Pick a vertical
-          datum, or switch to a compound CRS (e.g. EPSG:7415).
-        </p>
-      )}
-
       <ComboBox
         inputValue={input}
         onInputChange={setInput}
@@ -111,6 +99,17 @@ export function VerticalDatumPicker({
         defaultFilter={() => true}
         className="flex flex-col gap-1"
       >
+        <Label className="text-xs text-slate-600">
+          Vertical datum (required for 3D)
+        </Label>
+
+        {isMissing && (
+          <Text className="text-[11px] text-amber-700" slot="description">
+            Horizontal CRS alone is ambiguous in 3D contexts. Pick a vertical
+            datum, or switch to a compound CRS (e.g. EPSG:7415).
+          </Text>
+        )}
+
         <Group className="flex items-center rounded border border-slate-300 bg-white transition-[border-color] duration-150 focus-within:border-slate-500">
           <Input
             placeholder="e.g. EPSG:5709"

@@ -15,7 +15,7 @@ interface ThreeDState {
   parameters: HelmertParams | null;
   activeCrs: CrsDef | null;
   showSpaces: boolean;
-  transparentBasemap: boolean;
+  xray: boolean;
 }
 
 interface MeshOrigin {
@@ -39,7 +39,7 @@ export function useThreeDLayer(
     parameters,
     activeCrs,
     showSpaces,
-    transparentBasemap,
+    xray,
   }: ThreeDState,
 ): { isLoading: boolean } {
   const threeDRef = useRef<ThreeDLayer | null>(null);
@@ -47,16 +47,12 @@ export function useThreeDLayer(
   // Cache meshes so toggling back to 3D doesn't re-fetch. The ref resets
   // naturally when Workspace remounts on file change (key={filename}).
   const meshCacheRef = useRef<Promise<Meshes> | null>(null);
-  // Read by `setup` for the layer's *initial* visibility, written by the
-  // toggle effect below so a flip during in-flight mesh load isn't lost.
-  // Kept out of the setup effect's deps so toggling doesn't re-anchor.
+  // Read by `setup` for the layer's *initial* visibility / transparency,
+  // written by the toggle effects below so a flip during in-flight mesh
+  // load isn't lost. Kept out of the setup effect's deps so toggling
+  // doesn't re-anchor.
   const showSpacesRef = useRef(showSpaces);
-  // `OrthogonalHeight` captured the first time the model is anchored
-  // while transparent mode is on. Used as the 0-reference so the model
-  // sits on the flat basemap, while edits to OrthogonalHeight still
-  // move it 1:1. Cleared when transparent mode is toggled off — see the
-  // effect below.
-  const transparentBaselineRef = useRef<number | null>(null);
+  const xrayRef = useRef(xray);
   // Drives the "Loading 3D model…" overlay in MapView. True while the
   // dynamic three.js import and mesh extraction are in flight; falls back
   // to false on completion, teardown, or cancellation.
@@ -87,12 +83,11 @@ export function useThreeDLayer(
       parameters,
       activeCrs,
       showSpacesRef,
+      xrayRef,
       threeDRef,
       meshOriginRef,
       meshCacheRef,
       isCancelled: () => cancelled,
-      transparentBasemap,
-      transparentBaselineRef,
     })
       .catch((error: unknown) => {
         emitLog({
@@ -110,21 +105,17 @@ export function useThreeDLayer(
       cancelled = true;
       setIsLoading(false);
     };
-  }, [mapRef, view, parameters, activeCrs, transparentBasemap]);
+  }, [mapRef, view, parameters, activeCrs]);
 
   useEffect(() => {
     showSpacesRef.current = showSpaces;
     threeDRef.current?.setSpacesVisible(showSpaces);
   }, [showSpaces]);
 
-  // Reset the baseline whenever transparent mode is toggled off so the
-  // next entry into transparent mode re-snapshots the current
-  // OrthogonalHeight.
   useEffect(() => {
-    if (!transparentBasemap) {
-      transparentBaselineRef.current = null;
-    }
-  }, [transparentBasemap]);
+    xrayRef.current = xray;
+    threeDRef.current?.setTransparentMode(xray);
+  }, [xray]);
 
   return { isLoading };
 }
@@ -157,12 +148,11 @@ async function setup(
     parameters: HelmertParams;
     activeCrs: CrsDef;
     showSpacesRef: RefObject<boolean>;
+    xrayRef: RefObject<boolean>;
     threeDRef: RefObject<ThreeDLayer | null>;
     meshOriginRef: RefObject<MeshOrigin | null>;
     meshCacheRef: RefObject<Promise<Meshes> | null>;
     isCancelled: () => boolean;
-    transparentBasemap: boolean;
-    transparentBaselineRef: RefObject<number | null>;
   },
 ): Promise<void> {
   // Lazy-load three.js + our threeDLayer module.
@@ -189,6 +179,7 @@ async function setup(
 
     context.threeDRef.current = layer;
     layer.setSpacesVisible(context.showSpacesRef.current);
+    layer.setTransparentMode(context.xrayRef.current);
     context.meshOriginRef.current = layer.setMeshes(meshes);
 
     if (!map.getLayer(layer.layer.id)) {
@@ -212,10 +203,6 @@ async function setup(
     context.activeCrs,
     map,
     meshOrigin,
-    {
-      flyCamera: isInitialPlacement,
-      transparentBasemap: context.transparentBasemap,
-      transparentBaseline: context.transparentBaselineRef,
-    },
+    isInitialPlacement,
   );
 }

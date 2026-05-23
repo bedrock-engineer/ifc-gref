@@ -408,7 +408,7 @@ export function Workspace({
     URL.revokeObjectURL(url);
     emitLog({
       message:
-        `Exported .ifcgref.json sidecar (EPSG:${activeCrs.code}` +
+        `Exported .ifcgref.json file (EPSG:${activeCrs.code}` +
         (verticalDatum ? `, vertical=${verticalDatum}` : "") +
         ")",
     });
@@ -419,7 +419,7 @@ export function Workspace({
     try {
       text = await file.text();
     } catch (error) {
-      reportError(`Couldn't read sidecar file: ${String(error)}`);
+      reportError(`Couldn't read .ifcgref.json file: ${String(error)}`);
       return;
     }
     const parsed = parseSidecar(text);
@@ -427,15 +427,18 @@ export function Workspace({
       reportError(sidecarErrorMessage(parsed.error));
       return;
     }
+
     const sidecar = parsed.value;
     const params = sidecarToParams(sidecar);
     const originsMatch = localOriginsEqual(
       sidecar.source.localOrigin,
       metadata.localOrigin,
     );
+
     replaceEpsg(String(sidecar.projectedCrs.epsg));
     setVerticalDatum(sidecar.projectedCrs.verticalDatum);
     dispatchAnchor({ type: "edited", params });
+    
     // Sidecar apply may change the active CRS (resolves async via
     // useCrsResolution). Reset the framed-state so `frameOnFirstAppearance`
     // takes over once `effectiveParameters` lands inside the new CRS's
@@ -443,6 +446,7 @@ export function Workspace({
     // the *old* CRS when the sidecar EPSG differs.
     hasFramedRef.current = false;
     framedWithFootprintRef.current = false;
+    
     emitLog({
       level: originsMatch ? "info" : "warn",
       message:

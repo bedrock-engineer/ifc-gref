@@ -38,11 +38,15 @@ interface LayersPanelProps {
   /** True when the loaded file contains IfcSpace entities. */
   hasSpaces: boolean;
   showSpaces: boolean;
-  /** When on, fades the active basemap and drops terrain so IFC geometry
-   *  below the ground (pilings, basements) is visible in 3D. */
-  transparentBasemap: boolean;
+  /** When on, the 3D layer clears the depth buffer before rendering so the
+   *  terrain mesh doesn't occlude IFC geometry that sits below ground
+   *  (basements, pilings). Only applicable in 3D view. */
+  xray: boolean;
+  /** Whether the map is currently in 3D view. Drives the x-ray toggle's
+   *  enabled state — it has no effect in 2D. */
+  isThreeD: boolean;
   onShowSpacesChange: (next: boolean) => void;
-  onTransparentBasemapChange: (next: boolean) => void;
+  onXrayChange: (next: boolean) => void;
   onBasemapChange: (id: BasemapId) => void;
   onOverlaysChange: (next: Record<OverlayId, boolean>) => void;
   onAddCustomBasemap: (b: CustomBasemap) => void;
@@ -101,9 +105,10 @@ export function LayersPanel({
   scope,
   hasSpaces,
   showSpaces,
-  transparentBasemap,
+  xray,
+  isThreeD,
   onShowSpacesChange,
-  onTransparentBasemapChange,
+  onXrayChange,
   onBasemapChange,
   onOverlaysChange,
   onAddCustomBasemap,
@@ -160,12 +165,19 @@ export function LayersPanel({
         ))}
       </RadioGroup>
       <Switch
-        isSelected={transparentBasemap}
-        onChange={onTransparentBasemapChange}
-        className="group flex cursor-pointer items-center justify-between gap-2 py-0.5 outline-none data-focus-visible:ring-2 data-focus-visible:ring-slate-500"
+        isSelected={xray}
+        onChange={onXrayChange}
+        isDisabled={!isThreeD}
+        className="group flex cursor-pointer items-center justify-between gap-2 py-0.5 outline-none data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-disabled:cursor-not-allowed data-disabled:opacity-50"
       >
-        <span title="Fade basemap and flatten terrain so IFC geometry below the ground (pilings, basements) is visible in 3D.">
-          Transparent
+        <span
+          title={
+            isThreeD
+              ? "Show IFC geometry below ground (basements, pilings) through the terrain mesh."
+              : "Only applies in 3D view."
+          }
+        >
+          X-ray
         </span>
         <span className="flex h-3.5 w-6 items-center rounded-full bg-slate-300 px-0.5 transition-colors group-data-selected:bg-slate-900">
           <span className="size-2.5 rounded-full bg-white transition-transform group-data-selected:translate-x-2.5" />
