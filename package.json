@@ -56,7 +56,6 @@
     "3d-tiles-renderer": "^0.4.24",
     "clsx": "^2.1.1",
     "comlink": "^4.4.2",
-    "d3-axis-for-react": "^1.1.1",
     "d3-dsv": "^3.0.1",
     "d3-polygon": "^3.0.1",
     "d3-scale": "^4.0.2",
