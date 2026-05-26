@@ -10,7 +10,7 @@
    those `any` returns, so the unsafe-* family fires on ~every line. Not
    worth hand-writing per-entity interfaces for a WASM interop shim. */
 
-import { type IfcAPI, IFCSITE } from "web-ifc";
+import { type IfcAPI, IFCPROJECT, IFCRELAGGREGATES, IFCSITE } from "web-ifc";
 import type { HelmertParams } from "#modules/helmert/solve";
 import { unitToMetres } from "#modules/units/convert";
 
@@ -373,8 +373,21 @@ export function rotationToAxisPair(rotation: number): {
   };
 }
 
-/** First IfcSite's express ID, or null if the model has no site. */
-export function findFirstSiteId(
+/**
+ * Express ID of the IfcSite we treat as the model's primary spatial site,
+ * or null if the model has no site.
+ *
+ * Single-site models (the overwhelming majority) return that one site
+ * directly — byte-identical to the old "first site" behavior. The
+ * disambiguation only engages when a file carries more than one IfcSite,
+ * which in practice means one real spatial site plus stray geometry that
+ * an exporter mistyped as IfcSite. In that case we prefer the site aggregated
+ * directly under the IfcProject — the spec-correct spatial container —
+ * because orphan geometry is never wired into the IfcRelAggregates spatial
+ * tree. Falls back to the first site if none is aggregated under the
+ * project, so we're never worse than the old behavior.
+ */
+export function findPrimarySiteId(
   ifcAPI: IfcAPI,
   modelID: number,
 ): number | null {
@@ -382,5 +395,50 @@ export function findFirstSiteId(
   if (ids.size() === 0) {
     return null;
   }
-  return ids.get(0);
+  if (ids.size() === 1) {
+    return ids.get(0);
+  }
+  const [aggregated] = sitesAggregatedUnderProject(ifcAPI, modelID);
+  return aggregated ?? ids.get(0);
+}
+
+/**
+ * Express IDs of IfcSites that appear as RelatedObjects of an
+ * IfcRelAggregates whose RelatingObject is an IfcProject — i.e. the sites
+ * that sit directly in the project's spatial decomposition, sorted
+ * ascending for a deterministic tiebreak. Best-effort: a malformed or
+ * stale relation is skipped rather than thrown, since the caller always
+ * has the first-site fallback.
+ */
+function sitesAggregatedUnderProject(
+  ifcAPI: IfcAPI,
+  modelID: number,
+): Array<number> {
+  const siteIds = new Set<number>();
+  const rels = ifcAPI.GetLineIDsWithType(modelID, IFCRELAGGREGATES);
+  for (let index = 0; index < rels.size(); index++) {
+    try {
+      const rel = ifcAPI.GetLine(modelID, rels.get(index), false);
+      const relatingId = expressIDOf(rel.RelatingObject);
+      if (relatingId == null) {
+        continue;
+      }
+      if (ifcAPI.GetLineType(modelID, relatingId) !== IFCPROJECT) {
+        continue;
+      }
+      const related: unknown = rel.RelatedObjects;
+      if (!Array.isArray(related)) {
+        continue;
+      }
+      for (const child of related) {
+        const childId = expressIDOf(child);
+        if (childId != null && ifcAPI.GetLineType(modelID, childId) === IFCSITE) {
+          siteIds.add(childId);
+        }
+      }
+    } catch {
+      // Stale/malformed relation — skip; first-site fallback covers us.
+    }
+  }
+  return [...siteIds].toSorted((a, b) => a - b);
 }

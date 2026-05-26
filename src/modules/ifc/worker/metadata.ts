@@ -7,7 +7,6 @@ import {
   type IfcAPI,
   IFCGEOMETRICREPRESENTATIONCONTEXT,
   IFCPROJECT,
-  IFCSITE,
   IFCUNITASSIGNMENT,
 } from "web-ifc";
 import type { XYZ } from "#modules/helmert/solve";
@@ -25,7 +24,14 @@ import {
   readExistingGeoref,
 } from "./georef";
 import { type IfcSchema, parseSchema } from "./schema";
-import { dmsToDecimal, firstOf, rawValue, stringOrNull } from "./shared";
+import {
+  dmsToDecimal,
+  expressIDOf,
+  findPrimarySiteId,
+  firstOf,
+  rawValue,
+  stringOrNull,
+} from "./shared";
 
 /**
  * Verbatim-from-file IfcSite attributes (inherited from IfcRoot /
@@ -167,7 +173,7 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
   const ifcAPI = await getApi();
   const schema = parseSchema(ifcAPI.GetModelSchema(modelID));
 
-  const site = firstOf(ifcAPI, modelID, IFCSITE);
+  const site = readSiteEntity(ifcAPI, modelID);
   const project = firstOf(ifcAPI, modelID, IFCPROJECT);
   const lengthUnit = readLengthUnit(ifcAPI, modelID, project);
   const lengthUnitMetres = unitToMetres(lengthUnit);
@@ -229,6 +235,42 @@ export async function readMetadata(modelID: number): Promise<IfcMetadata> {
   });
 
   return metadata;
+}
+
+/**
+ * Read the primary IfcSite without flattening its geometric Representation.
+ */
+function readSiteEntity(ifcAPI: IfcAPI, modelID: number): any {
+  const siteID = findPrimarySiteId(ifcAPI, modelID);
+  if (siteID == null) {
+    return null;
+  }
+  const site = ifcAPI.GetLine(modelID, siteID, false);
+  if (!site) {
+    return null;
+  }
+  site.ObjectPlacement = flattenReference(ifcAPI, modelID, site.ObjectPlacement);
+  site.SiteAddress = flattenReference(ifcAPI, modelID, site.SiteAddress);
+  return site;
+}
+
+/**
+ * Resolve a single Handle attribute to its flattened entity, leaving the
+ * attribute null when it's absent or unresolvable. Lets `readSiteEntity`
+ * expand the specific sub-references it needs without a full-site
+ * GetLine(flatten=true) — keeping the downstream readers' nested-object
+ * access (`placement.RelativePlacement.Location`, `address.Town`) working.
+ */
+function flattenReference(ifcAPI: IfcAPI, modelID: number, ref: any): any {
+  const id = expressIDOf(ref);
+  if (id == null) {
+    return null;
+  }
+  try {
+    return ifcAPI.GetLine(modelID, id, true);
+  } catch {
+    return null;
+  }
 }
 
 function readSiteReference(

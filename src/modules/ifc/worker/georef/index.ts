@@ -10,7 +10,7 @@ import type { HelmertParams } from "#modules/helmert/solve";
 import { getApi } from "../api";
 import { deriveIfcMetresPerUnit } from "../metadata";
 import { parseSchema, type IfcSchema } from "../schema";
-import { decimalToDms, findFirstSiteId } from "../shared";
+import { decimalToDms, findPrimarySiteId } from "../shared";
 import { readGeorefIfc2x3, writeGeorefIfc2x3 } from "./ifc2x3";
 import {
   readGeorefIfc4,
@@ -197,7 +197,7 @@ function syncSiteReference(
   modelID: number,
   ref: SiteReferenceSync,
 ): void {
-  const siteID = findFirstSiteId(ifcAPI, modelID);
+  const siteID = findPrimarySiteId(ifcAPI, modelID);
   if (siteID == null) {
     return;
   }

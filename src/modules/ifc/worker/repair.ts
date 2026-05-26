@@ -6,7 +6,7 @@
 import { IFCLENGTHMEASURE } from "web-ifc";
 import { emitLog } from "#lib/log";
 import { getApi } from "./api";
-import { findFirstSiteId } from "./shared";
+import { findPrimarySiteId } from "./shared";
 
 /**
  * Zero `IfcSite.ObjectPlacement.RelativePlacement.Location.Coordinates`
@@ -36,7 +36,7 @@ export async function zeroSitePlacementLocation(
   modelID: number,
 ): Promise<void> {
   const ifcAPI = await getApi();
-  const siteID = findFirstSiteId(ifcAPI, modelID);
+  const siteID = findPrimarySiteId(ifcAPI, modelID);
   if (siteID == null) {
     return;
   }

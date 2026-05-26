@@ -21,7 +21,7 @@ import type { HelmertParams } from "#modules/helmert/solve";
 import {
   buildHelmertFromFields,
   expressIDOf,
-  findFirstSiteId,
+  findPrimarySiteId,
   rawValue,
   rotationToAxisPair,
 } from "../shared";
@@ -50,7 +50,7 @@ export function readGeorefIfc2x3(
   modelID: number,
   ifcMetresPerUnit: number,
 ): GeorefRead {
-  const siteID = findFirstSiteId(ifcAPI, modelID);
+  const siteID = findPrimarySiteId(ifcAPI, modelID);
   if (siteID == null) {
     return absentGeorefRead(null);
   }
@@ -207,7 +207,7 @@ export function writeGeorefIfc2x3(
   parameters: HelmertParams,
   ifcMetresPerUnit: number,
 ): void {
-  const siteID = findFirstSiteId(ifcAPI, modelID);
+  const siteID = findPrimarySiteId(ifcAPI, modelID);
   if (siteID == null) {
     const message = "No IfcSite found in IFC2X3 model";
     emitLog({ level: "error", source: "worker", message });
