@@ -488,6 +488,9 @@ export function Workspace({
           isRepairingBakedOrigin={isRepairingBakedOrigin}
           onAdoptBakedOrigin={handleAdoptBakedOriginAsAnchor}
           onClearSitePlacement={handleClearSitePlacement}
+          onZoomToSite={(site) => {
+            mapViewRef.current?.flyToSite(site);
+          }}
           canDownloadSidecar={
             effectiveParameters !== null && activeCrs !== null
           }

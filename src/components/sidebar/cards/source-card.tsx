@@ -63,6 +63,9 @@ interface SourceCardProps {
    *  existing IfcMapConversion is already correct on its own, the IfcSite
    *  placement is the duplicate that needs to go. */
   onClearSitePlacement: () => void;
+  /** Fly the map camera to the IfcSite RefLat/RefLon — backs the site
+   *  section's "Zoom to IfcSite" button. */
+  onZoomToSite: (site: { lat: number; lon: number }) => void;
   canDownloadSidecar: boolean;
   onDownloadSidecar: () => void;
   onApplySidecar: (file: File) => void;
@@ -79,6 +82,7 @@ export function SourceCard({
   isRepairingBakedOrigin,
   onAdoptBakedOrigin,
   onClearSitePlacement,
+  onZoomToSite,
   canDownloadSidecar,
   onDownloadSidecar,
   onApplySidecar,
@@ -181,6 +185,7 @@ export function SourceCard({
           activeCrsCode={activeCrsCode}
           projectLengthUnitShort={projectLengthUnit.short}
           projectMetresPerUnit={metadata.metresPerUnit}
+          onZoomToSite={onZoomToSite}
         />
         
         <GeometricContextSection

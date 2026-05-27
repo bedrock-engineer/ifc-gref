@@ -65,6 +65,16 @@ function deriveThreeDDisabled(
  */
 export interface MapViewHandle {
   frameToContent: (signals: MapOverlaySignals) => void;
+  /**
+   * Fly the camera to an explicit WGS84 point (the IfcSite RefLat/RefLon),
+   * ignoring footprint / MapConversion. Backs the source card's "Zoom to
+   * IfcSite" button, whose job is to locate a site reference that sits far
+   * from the rest of the model, where the regular "zoom to model" framing
+   * would never land. Unlike `frameToContent`, this runs in 3D too: 3D
+   * renders on the same MapLibre camera, so `flyTo` recenters while keeping
+   * the current pitch/bearing.
+   */
+  flyToSite: (site: { lat: number; lon: number }) => void;
 }
 
 function useCustomBasemaps(setBasemap: Dispatch<SetStateAction<BasemapId>>) {
@@ -201,6 +211,15 @@ export function MapView({
         }
 
         frameCamera(map, signals, { duration: 100 });
+      },
+      flyToSite(site) {
+        const map = mapRef.current;
+
+        if (!map) {
+          return;
+        }
+
+        map.flyTo({ center: [site.lon, site.lat], zoom: 17, duration: 600 });
       },
     }),
     [effectiveView, mapRef],

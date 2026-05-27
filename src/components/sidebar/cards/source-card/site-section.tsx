@@ -3,7 +3,11 @@ import {
   Disclosure,
   DisclosurePanel,
   Heading,
+  OverlayArrow,
+  Tooltip,
+  TooltipTrigger,
 } from "react-aria-components";
+import { TargetIcon } from "@radix-ui/react-icons";
 import type { RawPostalAddress, RawSite } from "#modules/ifc/worker";
 import { Row } from "./row";
 
@@ -30,6 +34,14 @@ interface SiteSectionProps {
    */
   projectLengthUnitShort: string;
   projectMetresPerUnit: number;
+  /**
+   * Fly the map camera to the IfcSite RefLat/RefLon. Surfaced as a
+   * "Zoom to IfcSite" button so users can locate a site reference that
+   * sits far from the MapConversion / model. The site's RefLat/RefLon are
+   * WGS84 per the IFC spec, so this works even when the value is outside
+   * the active CRS area of use (the case the button most exists for).
+   */
+  onZoomToSite: (site: { lat: number; lon: number }) => void;
 }
 
 /**
@@ -46,6 +58,7 @@ export function SiteSection({
   activeCrsCode,
   projectLengthUnitShort,
   projectMetresPerUnit,
+  onZoomToSite,
 }: SiteSectionProps) {
   if (raw == null) {
     return (
@@ -54,6 +67,12 @@ export function SiteSection({
       </div>
     );
   }
+
+  // Pulled out of the rows so the zoom button can both gate on presence and
+  // pass narrowed numbers into its press handler (const narrowing flows into
+  // the closure; reading raw.refLatitude there would re-widen to number|null).
+  const lat = raw.refLatitude;
+  const lon = raw.refLongitude;
 
   return (
     <Disclosure defaultExpanded>
@@ -117,6 +136,36 @@ export function SiteSection({
           )}
           {raw.address != null && <AddressRows address={raw.address} />}
         </dl>
+
+        {lat != null && lon != null && (
+          <TooltipTrigger delay={300}>
+            <Button
+              aria-label="Zoom to IfcSite"
+              onPress={() => {
+                onZoomToSite({ lat, lon });
+              }}
+              className="mt-2 flex h-6 w-6 cursor-pointer border border-slate-300 items-center justify-center rounded text-slate-500 outline-none transition-colors duration-150 data-focus-visible:ring-2 data-focus-visible:ring-slate-500 data-hovered:bg-slate-200 data-hovered:text-slate-700"
+            >
+              <TargetIcon />
+            </Button>
+            <Tooltip
+              placement="top"
+              className="max-w-xs rounded bg-slate-900 px-2 py-1 text-xs text-white shadow-md data-entering:animate-in data-entering:fade-in data-exiting:animate-out data-exiting:fade-out"
+            >
+              <OverlayArrow>
+                <svg
+                  width={8}
+                  height={8}
+                  viewBox="0 0 8 8"
+                  className="fill-slate-900"
+                >
+                  <path d="M0 0 L4 4 L8 0" />
+                </svg>
+              </OverlayArrow>
+              Zoom to IfcSite on the map
+            </Tooltip>
+          </TooltipTrigger>
+        )}
       </DisclosurePanel>
     </Disclosure>
   );
