@@ -51,11 +51,25 @@ export interface PlacedGeometry {
   color: { x: number; y: number; z: number; w: number };
 }
 
-function asMat16(m: ArrayLike<number>): Mat16 {
+function isMat16(m: ArrayLike<number>): m is Mat16 {
   if (m.length !== 16) {
-    throw new Error(`flatTransformation length ${m.length}, expected 16`);
+    return false;
   }
-  return m as unknown as Mat16;
+  for (let index = 0; index < 16; index++) {
+    if (!Number.isFinite(m[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function asMat16(m: ArrayLike<number>): Mat16 {
+  if (!isMat16(m)) {
+    throw new TypeError(
+      `flatTransformation invalid (length=${m.length}, expected 16 finite numbers)`,
+    );
+  }
+  return m;
 }
 
 /**
@@ -169,8 +183,14 @@ function emitPlacedGeometries(
   callback: (g: PlacedGeometry) => void,
 ): void {
   // GetLineType is typed `any` in web-ifc; it's documented to return the
-  // numeric type constant.
+  // numeric type constant. Coerce + validate so a bad value fails loudly
+  // here rather than silently mismatching downstream class comparisons.
   const ifcClass = Number(ifcAPI.GetLineType(modelID, mesh.expressID));
+  if (!Number.isFinite(ifcClass)) {
+    throw new TypeError(
+      `GetLineType returned non-finite value for expressID ${mesh.expressID}`,
+    );
+  }
   const placedGeometries = mesh.geometries;
   const count = placedGeometries.size();
   for (let g = 0; g < count; g++) {
