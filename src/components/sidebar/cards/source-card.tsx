@@ -102,7 +102,9 @@ export function SourceCard({
   // IFC2X3 ePset has no MapUnit concept; its convention is project units.
   const mapUnitName = metadata.rawProjectedCrs?.mapUnit ?? null;
   const mapUnitFallbackName = isEpsetSchema ? metadata.lengthUnit : "METRE";
-  const mapUnitShort = describeIfcUnit(mapUnitName ?? mapUnitFallbackName).short;
+  const mapUnitShort = describeIfcUnit(
+    mapUnitName ?? mapUnitFallbackName,
+  ).short;
   // Badge text for the MapUnit row when the reader couldn't pin down a
   // unit from the file. Picked from (status, schema): IFC4 defaults to
   // METRE on absent; the malformed-shift pattern (Revit + ifcopenshell
@@ -185,11 +187,11 @@ export function SourceCard({
           projectMetresPerUnit={metadata.metresPerUnit}
           onZoomToSite={onZoomToSite}
         />
-        
+
         <GeometricContextSection
           raw={metadata.rawGeometricRepresentationContext}
         />
-        
+
         <ProjectedCrsSection
           raw={metadata.rawProjectedCrs}
           absentEntityName={projectedCrsEntity}
@@ -336,7 +338,8 @@ function DoubleBakedOriginNotice({
       <p>
         <code>IfcSite.ObjectPlacement</code> carries{" "}
         <code>
-          ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)}) m
+          ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)})
+          m
         </code>{" "}
         that duplicates the offset already in <code>IfcMapConversion</code>.
         Applying the Helmert to the baked placement places geometry outside the
@@ -373,7 +376,8 @@ function BakedProjectedOriginNotice({
       <p>
         <code>IfcSite.ObjectPlacement</code> carries{" "}
         <code>
-          ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)}) m
+          ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)})
+          m
         </code>{" "}
         that looks like projected coordinates baked into the placement. Per the{" "}
         <a
@@ -400,8 +404,8 @@ function BakedProjectedOriginNotice({
         </Button>
         {!hasActiveCrs && (
           <p className="text-amber-800">
-            Pick a target CRS first — the offset is interpreted in CRS units
-            on write.
+            Pick a target CRS first — the offset is interpreted in CRS units on
+            write.
           </p>
         )}
         <p className="text-amber-800">
@@ -413,12 +417,15 @@ function BakedProjectedOriginNotice({
   );
 }
 
-function describeMapUnitFallback(args: {
+function describeMapUnitFallback({
+  status,
+  isEpsetSchema,
+  projectLengthUnitShort,
+}: {
   status: RawProjectedCrs["mapUnitStatus"];
   isEpsetSchema: boolean;
   projectLengthUnitShort: string;
-}): string {
-  const { status, isEpsetSchema, projectLengthUnitShort } = args;
+}) {
   // Status comes from the reader's classification of the MapUnit entity.
   // The schema axis only matters for `absent` — IFC4 defaults to METRE,
   // IFC2X3 ePset has no MapUnit concept and falls back to project unit.

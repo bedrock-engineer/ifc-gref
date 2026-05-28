@@ -26,9 +26,9 @@ import type { HelmertParams, XYZ } from "#modules/helmert/solve";
 import type { IfcSchema } from "#modules/ifc/worker";
 
 const xyzSchema = z.object({
-  x: z.number().finite(),
-  y: z.number().finite(),
-  z: z.number().finite(),
+  x: z.number(),
+  y: z.number(),
+  z: z.number(),
 });
 
 const sidecarSchema = z.object({
@@ -62,12 +62,6 @@ const sidecarSchema = z.object({
 });
 
 export type Sidecar = z.infer<typeof sidecarSchema>;
-
-export type SidecarError =
-  | { kind: "invalid-json"; cause: unknown }
-  | { kind: "wrong-app"; got: string }
-  | { kind: "unsupported-version"; got: unknown }
-  | { kind: "schema-mismatch"; cause: z.ZodError };
 
 interface BuildSidecarInput {
   filename: string;
@@ -108,6 +102,11 @@ export function buildSidecar(input: BuildSidecarInput): Sidecar {
   };
 }
 
+export type SidecarError =
+  | { kind: "invalid-json"; cause: unknown }
+  | { kind: "unsupported-version"; got: unknown }
+  | { kind: "schema-mismatch"; cause: z.ZodError };
+
 export function parseSidecar(text: string): Result<Sidecar, SidecarError> {
   let raw: unknown;
   try {
@@ -121,19 +120,8 @@ export function parseSidecar(text: string): Result<Sidecar, SidecarError> {
   // v2 sidecar or an unrelated JSON file with no `app.name` field.
   if (typeof raw === "object" && raw !== null) {
     const anyRaw = raw as { formatVersion?: unknown; app?: { name?: unknown } };
-    if (
-      anyRaw.formatVersion !== undefined &&
-      anyRaw.formatVersion !== 1
-    ) {
+    if (anyRaw.formatVersion !== undefined && anyRaw.formatVersion !== 1) {
       return err({ kind: "unsupported-version", got: anyRaw.formatVersion });
-    }
-    if (
-      anyRaw.app &&
-      typeof anyRaw.app === "object" &&
-      typeof anyRaw.app.name === "string" &&
-      anyRaw.app.name !== "ifcgref"
-    ) {
-      return err({ kind: "wrong-app", got: anyRaw.app.name });
     }
   }
 
@@ -179,10 +167,7 @@ export function sidecarFilenameFor(sourceFilename: string): string {
  * the model in the wrong place. We don't try to be tolerant — the user
  * downstream sees an amber log line, not a hard refusal.
  */
-export function localOriginsEqual(
-  a: XYZ | null,
-  b: XYZ | null,
-): boolean {
+export function localOriginsEqual(a: XYZ | null, b: XYZ | null): boolean {
   if (a === null && b === null) {
     return true;
   }

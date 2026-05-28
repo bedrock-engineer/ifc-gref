@@ -54,8 +54,6 @@ import { useIfcWrite } from "./workspace/use-ifc-write";
 import { useTargetCrs } from "./workspace/use-target-crs";
 import { writeMapConversionToWorker } from "./workspace/write-map-conversion";
 
-const mapContainerStyle = { gridArea: "map" };
-
 export interface WorkspaceProps {
   filename: string;
   metadata: IfcMetadata;
@@ -172,7 +170,7 @@ export function Workspace({
     ],
   );
 
-  const mapViewRef = useRef<MapViewHandle>(null);
+  const mapViewRef = useRef<MapViewHandle>(null); // expose maplibre-gl a bit
   const hasFramedRef = useRef(false);
   const framedWithFootprintRef = useRef(false);
 
@@ -282,6 +280,7 @@ export function Workspace({
   // `existingGeoref`, the other its absence), so only one button can be
   // in flight at a time — splitting into two flags would be ceremony.
   const [isRepairingBakedOrigin, startRepair] = useTransition();
+
   function handleAdoptBakedOriginAsAnchor() {
     if (!view.bakedProjectedOrigin || !activeCrs) {
       return;
@@ -332,8 +331,7 @@ export function Workspace({
         hasFramedRef.current = false;
         framedWithFootprintRef.current = false;
         emitLog({
-          message:
-            `Moved IfcSite placement offset (${baked.x.toFixed(2)}, ${baked.y.toFixed(2)}, ${baked.z.toFixed(2)}) m into IfcMapConversion anchor`,
+          message: `Moved IfcSite placement offset (${baked.x.toFixed(2)}, ${baked.y.toFixed(2)}, ${baked.z.toFixed(2)}) m into IfcMapConversion anchor`,
         });
       } catch (error) {
         reportError(
@@ -375,8 +373,7 @@ export function Workspace({
         hasFramedRef.current = false;
         framedWithFootprintRef.current = false;
         emitLog({
-          message:
-            `Zeroed IfcSite.ObjectPlacement (was (${offset.x.toFixed(2)}, ${offset.y.toFixed(2)}, ${offset.z.toFixed(2)}) m, duplicated by IfcMapConversion)`,
+          message: `Zeroed IfcSite.ObjectPlacement (was (${offset.x.toFixed(2)}, ${offset.y.toFixed(2)}, ${offset.z.toFixed(2)}) m, duplicated by IfcMapConversion)`,
         });
       } catch (error) {
         reportError(
@@ -390,6 +387,7 @@ export function Workspace({
     if (!effectiveParameters || !activeCrs) {
       return;
     }
+
     const sidecar = buildSidecar({
       filename,
       schema: metadata.schema,
@@ -406,6 +404,7 @@ export function Workspace({
     anchor.download = sidecarFilenameFor(filename);
     anchor.click();
     URL.revokeObjectURL(url);
+    
     emitLog({
       message:
         `Exported .ifcgref.json file (EPSG:${activeCrs.code}` +
@@ -416,12 +415,14 @@ export function Workspace({
 
   async function handleApplySidecar(file: File) {
     let text: string;
+    
     try {
       text = await file.text();
     } catch (error) {
       reportError(`Couldn't read .ifcgref.json file: ${String(error)}`);
       return;
     }
+
     const parsed = parseSidecar(text);
     if (parsed.isErr()) {
       reportError(sidecarErrorMessage(parsed.error));
@@ -438,7 +439,7 @@ export function Workspace({
     replaceEpsg(String(sidecar.projectedCrs.epsg));
     setVerticalDatum(sidecar.projectedCrs.verticalDatum);
     dispatchAnchor({ type: "edited", params });
-    
+
     // Sidecar apply may change the active CRS (resolves async via
     // useCrsResolution). Reset the framed-state so `frameOnFirstAppearance`
     // takes over once `effectiveParameters` lands inside the new CRS's
@@ -446,7 +447,7 @@ export function Workspace({
     // the *old* CRS when the sidecar EPSG differs.
     hasFramedRef.current = false;
     framedWithFootprintRef.current = false;
-    
+
     emitLog({
       level: originsMatch ? "info" : "warn",
       message:
@@ -588,19 +589,17 @@ export function Workspace({
         />
       </Sidebar>
 
-      <section style={mapContainerStyle}>
-        <MapView
-          ref={mapViewRef}
-          parameters={effectiveParameters}
-          activeCrs={activeCrs}
-          overlaySignals={overlaySignals}
-          isPickingAnchor={isPickingAnchor}
-          onAnchorPicked={handleAnchorPicked}
-          onCancelPickAnchor={cancelPickAnchor}
-          residualsPoints={lastFitPoints}
-          hasSpaces={(spacesLocal?.length ?? 0) > 0}
-        />
-      </section>
+      <MapView
+        ref={mapViewRef}
+        parameters={effectiveParameters}
+        activeCrs={activeCrs}
+        overlaySignals={overlaySignals}
+        isPickingAnchor={isPickingAnchor}
+        onAnchorPicked={handleAnchorPicked}
+        onCancelPickAnchor={cancelPickAnchor}
+        residualsPoints={lastFitPoints}
+        hasSpaces={(spacesLocal?.length ?? 0) > 0}
+      />
     </>
   );
 }
@@ -617,9 +616,11 @@ function deriveCoordinateOperationLabel(metadata: IfcMetadata): string {
   if (metadata.activeCoordinateOperation === "rigid-operation") {
     return "IfcRigidOperation";
   }
+
   if (metadata.rawMapConversion?.entityName) {
     return metadata.rawMapConversion.entityName;
   }
+  
   return metadata.schema === "IFC2X3"
     ? "ePset_MapConversion"
     : "IfcMapConversion";
@@ -628,16 +629,13 @@ function deriveCoordinateOperationLabel(metadata: IfcMetadata): string {
 function sidecarErrorMessage(error: SidecarError): string {
   switch (error.kind) {
     case "invalid-json": {
-      return "Sidecar file isn't valid JSON.";
-    }
-    case "wrong-app": {
-      return `Sidecar was written by "${error.got}", not ifcgref — refusing to apply.`;
+      return "ifcgref.json file isn't valid JSON.";
     }
     case "unsupported-version": {
-      return `Sidecar formatVersion ${String(error.got)} isn't supported by this build of ifcgref.`;
+      return `ifcgref.json formatVersion ${String(error.got)} isn't supported by this build of ifcgref.`;
     }
     case "schema-mismatch": {
-      return "Sidecar JSON shape doesn't match the expected schema.";
+      return "ifcgref.json shape doesn't match the expected schema.";
     }
   }
 }

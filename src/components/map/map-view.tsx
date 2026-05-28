@@ -40,6 +40,8 @@ import {
   type OverlayId,
 } from "./layers/registry";
 
+const mapContainerStyle = { gridArea: "map" };
+
 function deriveThreeDDisabled(
   parameters: HelmertParams | null,
   activeCrs: CrsDef | null,
@@ -242,7 +244,7 @@ export function MapView({
   useAnchorPicker(mapRef, isPickingAnchor, onAnchorPicked, onCancelPickAnchor);
 
   return (
-    <>
+    <section style={mapContainerStyle}>
       <div ref={containerRef} className="h-full w-full overflow-hidden" />
       {portals && (
         <>
@@ -309,7 +311,6 @@ export function MapView({
           )}
         </>
       )}
-    </>
+    </section>
   );
 }
-
