@@ -7,10 +7,22 @@ import { getApi } from "./api";
 
 /** Column-major 4x4 transformation matrix, exactly 16 entries. */
 export type Mat16 = readonly [
-  number, number, number, number,
-  number, number, number, number,
-  number, number, number, number,
-  number, number, number, number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
 ];
 
 /**
@@ -54,13 +66,21 @@ function asMat16(m: ArrayLike<number>): Mat16 {
  */
 export function transformPositionToIfcFrame(
   matrix: Mat16,
-  x: number, y: number, z: number,
+  x: number,
+  y: number,
+  z: number,
   out: Float32Array | Float64Array,
   outIndex: number,
 ): void {
   out[outIndex] = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
-  out[outIndex + 1] = -(matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14]);
-  out[outIndex + 2] = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+  out[outIndex + 1] = -(
+    matrix[2] * x +
+    matrix[6] * y +
+    matrix[10] * z +
+    matrix[14]
+  );
+  out[outIndex + 2] =
+    matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
 }
 
 /**
@@ -76,7 +96,9 @@ export function transformPositionToIfcFrame(
  */
 export function transformDirectionToIfcFrame(
   matrix: Mat16,
-  x: number, y: number, z: number,
+  x: number,
+  y: number,
+  z: number,
   out: Float32Array | Float64Array,
   outIndex: number,
 ): void {

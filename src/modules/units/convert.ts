@@ -1,6 +1,9 @@
-import { ok, err, type Result } from 'neverthrow'
+import { ok, err, type Result } from "neverthrow";
 
-export interface UnitError { kind: 'unknown-unit'; name: string }
+export interface UnitError {
+  kind: "unknown-unit";
+  name: string;
+}
 
 /**
  * Length unit conversion. Maps IFC unit name strings to their conversion
@@ -21,12 +24,12 @@ const UNIT_TO_METRES: Record<string, number> = {
   YARD: 0.9144,
   MILE: 1609.344,
   NAUTICAL_MILE: 1852,
-}
+};
 
 export function unitToMetres(name: string): Result<number, UnitError> {
-  const value = UNIT_TO_METRES[name.toUpperCase()]
+  const value = UNIT_TO_METRES[name.toUpperCase()];
   if (value === undefined) {
-    return err({ kind: 'unknown-unit', name })
+    return err({ kind: "unknown-unit", name });
   }
-  return ok(value)
+  return ok(value);
 }

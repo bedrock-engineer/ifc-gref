@@ -90,7 +90,7 @@ function findPreprocessorRange(head: string): ArgumentRange | null {
   return arguments_[4] ? trimWhitespace(head, arguments_[4]) : null;
 }
 
-export const ATTRIBUTION =
+const ATTRIBUTION =
   "IFC Georeferencer by Bedrock.engineer for buildingSMART Netherlands";
 
 /**

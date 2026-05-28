@@ -77,12 +77,12 @@ export function ProjectedCrsSection({
 
 function isEmpty(raw: RawProjectedCrs): boolean {
   return (
-    raw.name == null
-    && raw.description == null
-    && raw.geodeticDatum == null
-    && raw.verticalDatum == null
-    && raw.mapProjection == null
-    && raw.mapZone == null
-    && raw.mapUnit == null
+    raw.name == null &&
+    raw.description == null &&
+    raw.geodeticDatum == null &&
+    raw.verticalDatum == null &&
+    raw.mapProjection == null &&
+    raw.mapZone == null &&
+    raw.mapUnit == null
   );
 }

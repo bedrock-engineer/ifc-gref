@@ -107,7 +107,7 @@ export function NumberField({
             <Stepper slot="increment" label="Increase">
               <TriangleUpIcon />
             </Stepper>
-            
+
             <Stepper slot="decrement" label="Decrease">
               <TriangleDownIcon />
             </Stepper>

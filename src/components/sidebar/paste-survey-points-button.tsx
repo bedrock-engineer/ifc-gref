@@ -203,7 +203,7 @@ function ErrorSummary({ error }: ErrorSummaryProps) {
           ? "No data rows to import."
           : "No rows could be parsed."}
       </p>
-      
+
       {error.issues.length > 0 && <IssueList issues={error.issues} />}
     </div>
   );

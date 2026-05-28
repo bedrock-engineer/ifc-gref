@@ -18,26 +18,29 @@ export function useExtractedSpaces(
     null,
   );
 
-  useEffect(function extract() {
-    const token = { cancelled: false };
-    void getIfc()
-      .extractSpaces()
-      .catch((error: unknown) => {
-        emitLog({
-          level: "error",
-          message: `Space extraction failed: ${error instanceof Error ? error.message : String(error)}`,
+  useEffect(
+    function extract() {
+      const token = { cancelled: false };
+      void getIfc()
+        .extractSpaces()
+        .catch((error: unknown) => {
+          emitLog({
+            level: "error",
+            message: `Space extraction failed: ${error instanceof Error ? error.message : String(error)}`,
+          });
+          return [] as Array<SpaceExtract>;
+        })
+        .then((result) => {
+          if (!token.cancelled) {
+            setSpaces(result);
+          }
         });
-        return [] as Array<SpaceExtract>;
-      })
-      .then((result) => {
-        if (!token.cancelled) {
-          setSpaces(result);
-        }
-      });
-    return () => {
-      token.cancelled = true;
-    };
-  }, [epoch]);
+      return () => {
+        token.cancelled = true;
+      };
+    },
+    [epoch],
+  );
 
   return spaces;
 }

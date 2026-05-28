@@ -24,7 +24,9 @@ import type { Map as MlMap } from "maplibre-gl";
 export function runWhenMapReady(map: MlMap, apply: () => void): () => void {
   if (map.isStyleLoaded()) {
     apply();
-    return () => {};
+    return () => {
+      /* empty */
+    };
   }
   let cancelled = false;
   const onIdle = () => {

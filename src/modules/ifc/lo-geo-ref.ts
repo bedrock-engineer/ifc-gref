@@ -19,6 +19,5 @@
  * workflow is producing a 60 transform".
  */
 
-
 /** Levels of Georeferencing */
 export type LoGeoref = "le10" | "l20" | "l50";

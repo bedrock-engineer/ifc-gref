@@ -29,9 +29,7 @@ interface GeometricContextSectionProps {
  * silently shifts/rotates the model before IfcMapConversion is applied,
  * and the disclosure is the only place a user can see it.
  */
-export function GeometricContextSection({
-  raw,
-}: GeometricContextSectionProps) {
+export function GeometricContextSection({ raw }: GeometricContextSectionProps) {
   if (raw == null) {
     return (
       <div className="border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
@@ -56,10 +54,7 @@ export function GeometricContextSection({
 
       <DisclosurePanel>
         <dl className="mt-2 space-y-1 border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
-          <Row
-            label="ContextIdentifier"
-            value={raw.contextIdentifier ?? "—"}
-          />
+          <Row label="ContextIdentifier" value={raw.contextIdentifier ?? "—"} />
           <Row label="ContextType" value={raw.contextType ?? "—"} />
           <Row
             label="CoordinateSpaceDimension"
@@ -68,9 +63,7 @@ export function GeometricContextSection({
           <Row
             label="Precision"
             value={
-              raw.precision == null
-                ? "—"
-                : `${trimZeros(raw.precision, 9)} m`
+              raw.precision == null ? "—" : `${trimZeros(raw.precision, 9)} m`
             }
           />
           <WcsRows wcs={raw.worldCoordinateSystem} />
@@ -100,7 +93,10 @@ function WcsRows({ wcs }: WcsRowsProps) {
         }
       />
       <Row label="WCS · Axis" value={formatDirection(wcs.axis)} />
-      <Row label="WCS · RefDirection" value={formatDirection(wcs.refDirection)} />
+      <Row
+        label="WCS · RefDirection"
+        value={formatDirection(wcs.refDirection)}
+      />
     </>
   );
 }

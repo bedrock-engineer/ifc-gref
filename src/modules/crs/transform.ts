@@ -49,9 +49,9 @@ export function transformWgs84ToProjected({
     return err({
       kind: "transform-failed",
       cause: new Error(
-        `WGS84 (${longitude.toFixed(4)}, ${latitude.toFixed(4)}) is outside `
-        + `the area of use for EPSG:${def.code}`
-        + (def.areaOfUse ? ` (${def.areaOfUse})` : ""),
+        `WGS84 (${longitude.toFixed(4)}, ${latitude.toFixed(4)}) is outside ` +
+          `the area of use for EPSG:${def.code}` +
+          (def.areaOfUse ? ` (${def.areaOfUse})` : ""),
       ),
     });
   }
@@ -64,8 +64,8 @@ export function transformWgs84ToProjected({
       return err({
         kind: "transform-failed",
         cause: new Error(
-          `proj4js returned non-finite (${xNative}, ${yNative}) for WGS84 `
-          + `(${longitude}, ${latitude}) → EPSG:${def.code}`,
+          `proj4js returned non-finite (${xNative}, ${yNative}) for WGS84 ` +
+            `(${longitude}, ${latitude}) → EPSG:${def.code}`,
         ),
       });
     }
@@ -89,7 +89,9 @@ export function isWithinBbox(
   latitude: number,
   bbox: CrsBbox | null,
 ): boolean {
-  if (!bbox) {return true;}
+  if (!bbox) {
+    return true;
+  }
   const [north, west, south, east] = bbox;
   // Allow a small slack outside the published bbox — area-of-use polygons
   // are conservative and the underlying transformations usually work for a
@@ -98,10 +100,10 @@ export function isWithinBbox(
   // inputs (an IfcSite in central France for an NL CRS).
   const slackDeg = 0.5;
   return (
-    longitude >= west - slackDeg
-    && longitude <= east + slackDeg
-    && latitude >= south - slackDeg
-    && latitude <= north + slackDeg
+    longitude >= west - slackDeg &&
+    longitude <= east + slackDeg &&
+    latitude >= south - slackDeg &&
+    latitude <= north + slackDeg
   );
 }
 
@@ -139,8 +141,10 @@ export function transformProjectedToWgs84(
     if (
       !Number.isFinite(longitude) ||
       !Number.isFinite(latitude) ||
-      latitude < -90 || latitude > 90 ||
-      longitude < -180 || longitude > 180
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
     ) {
       return err({ kind: "transform-failed", cause: { longitude, latitude } });
     }
@@ -148,11 +152,11 @@ export function transformProjectedToWgs84(
       return err({
         kind: "transform-failed",
         cause: new Error(
-          `proj4js returned WGS84 (${longitude.toFixed(4)}, ${latitude.toFixed(4)}) `
-          + `for projected (${x}, ${y}) in EPSG:${def.code}, but that's outside `
-          + `the CRS's area of use`
-          + (def.areaOfUse ? ` (${def.areaOfUse})` : "")
-          + ". Likely a placeholder IfcMapConversion or a grid-shift miss.",
+          `proj4js returned WGS84 (${longitude.toFixed(4)}, ${latitude.toFixed(4)}) ` +
+            `for projected (${x}, ${y}) in EPSG:${def.code}, but that's outside ` +
+            `the CRS's area of use` +
+            (def.areaOfUse ? ` (${def.areaOfUse})` : "") +
+            ". Likely a placeholder IfcMapConversion or a grid-shift miss.",
         ),
       });
     }

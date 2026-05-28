@@ -21,26 +21,29 @@ export function useExtractedFootprint(
     y: number;
   }> | null>(null);
 
-  useEffect(function extract() {
-    const token = { cancelled: false };
-    void getIfc()
-      .extractFootprint()
-      .catch((error: unknown) => {
-        emitLog({
-          level: "error",
-          message: `Footprint extraction failed: ${error instanceof Error ? error.message : String(error)}`,
+  useEffect(
+    function extract() {
+      const token = { cancelled: false };
+      void getIfc()
+        .extractFootprint()
+        .catch((error: unknown) => {
+          emitLog({
+            level: "error",
+            message: `Footprint extraction failed: ${error instanceof Error ? error.message : String(error)}`,
+          });
+          return null;
+        })
+        .then((hull) => {
+          if (!token.cancelled) {
+            setFootprint(hull);
+          }
         });
-        return null;
-      })
-      .then((hull) => {
-        if (!token.cancelled) {
-          setFootprint(hull);
-        }
-      });
-    return () => {
-      token.cancelled = true;
-    };
-  }, [epoch]);
+      return () => {
+        token.cancelled = true;
+      };
+    },
+    [epoch],
+  );
 
   return footprint;
 }

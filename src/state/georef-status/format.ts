@@ -27,7 +27,9 @@ export function findingToLogMessage(finding: Finding): string {
       );
     }
     case "site-outside-crs": {
-      const where = `EPSG:${finding.crsCode}` + (finding.areaOfUse ? ` (${finding.areaOfUse})` : "");
+      const where =
+        `EPSG:${finding.crsCode}` +
+        (finding.areaOfUse ? ` (${finding.areaOfUse})` : "");
       const tail = finding.hasExistingGeoref
         ? "— not shown on map."
         : "— pick a different CRS, or use the Survey points tab to enter a known point manually.";
@@ -37,7 +39,9 @@ export function findingToLogMessage(finding: Finding): string {
       );
     }
     case "helmert-outside-crs": {
-      const where = `EPSG:${finding.crsCode}` + (finding.areaOfUse ? ` (${finding.areaOfUse})` : "");
+      const where =
+        `EPSG:${finding.crsCode}` +
+        (finding.areaOfUse ? ` (${finding.areaOfUse})` : "");
       const source =
         finding.source === "existing-georef"
           ? "Existing IfcMapConversion"

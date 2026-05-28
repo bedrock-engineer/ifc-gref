@@ -1,11 +1,7 @@
 import { type CrsDef, projectLocalToWgs84 } from "#modules/crs";
 import type { HelmertParams } from "#modules/helmert/solve";
 import type { SpaceExtract } from "#modules/ifc/worker";
-import type {
-  MapOverlaySignals,
-  MapReferences,
-  SpaceOverlay,
-} from "./types";
+import type { MapOverlaySignals, MapReferences, SpaceOverlay } from "./types";
 
 /**
  * Project the IFC-local footprint hull and per-space hulls through the

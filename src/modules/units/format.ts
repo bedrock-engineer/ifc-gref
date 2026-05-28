@@ -23,18 +23,18 @@ interface Entry {
 // a descriptor here too, so the IFC-name and CRS-metresPerUnit paths
 // converge on the same label/symbol.
 const ENTRIES: ReadonlyArray<Entry> = [
-  { metres: 1,           label: "metre",          short: "m",  intl: "meter" },
-  { metres: 0.001,       label: "millimetre",     short: "mm", intl: "millimeter" },
-  { metres: 0.01,        label: "centimetre",     short: "cm", intl: "centimeter" },
-  { metres: 0.3048,      label: "foot",           short: "ft", intl: "foot" },
+  { metres: 1, label: "metre", short: "m", intl: "meter" },
+  { metres: 0.001, label: "millimetre", short: "mm", intl: "millimeter" },
+  { metres: 0.01, label: "centimetre", short: "cm", intl: "centimeter" },
+  { metres: 0.3048, label: "foot", short: "ft", intl: "foot" },
   // US-survey-foot differs from international foot by ~2 ppm. Intl has no
   // separate identifier, so we alias to "foot" for display — the conversion
   // stays correct in metresPerUnit, only the rendered label is shared.
   { metres: 1200 / 3937, label: "US survey foot", short: "ft", intl: "foot" },
-  { metres: 0.0254,      label: "inch",           short: "in", intl: "inch" },
-  { metres: 0.9144,      label: "yard",           short: "yd", intl: "yard" },
-  { metres: 1609.344,    label: "mile",           short: "mi", intl: "mile" },
-  { metres: 1852,        label: "nautical mile",  short: "NM", intl: null },
+  { metres: 0.0254, label: "inch", short: "in", intl: "inch" },
+  { metres: 0.9144, label: "yard", short: "yd", intl: "yard" },
+  { metres: 1609.344, label: "mile", short: "mi", intl: "mile" },
+  { metres: 1852, label: "nautical mile", short: "NM", intl: null },
 ];
 
 const UNKNOWN: UnitDescriptor = { label: "unknown", short: "u", intl: null };

@@ -34,13 +34,7 @@ type Meshes = Awaited<ReturnType<IfcFacade["extractMeshes"]>>;
  */
 export function useThreeDLayer(
   mapRef: RefObject<MlMap | null>,
-  {
-    view,
-    parameters,
-    activeCrs,
-    showSpaces,
-    xray,
-  }: ThreeDState,
+  { view, parameters, activeCrs, showSpaces, xray }: ThreeDState,
 ): { isLoading: boolean } {
   const threeDRef = useRef<ThreeDLayer | null>(null);
   const meshOriginRef = useRef<MeshOrigin | null>(null);
@@ -53,6 +47,7 @@ export function useThreeDLayer(
   // doesn't re-anchor.
   const showSpacesRef = useRef(showSpaces);
   const xrayRef = useRef(xray);
+
   // Drives the "Loading 3D model…" overlay in MapView. True while the
   // dynamic three.js import and mesh extraction are in flight; falls back
   // to false on completion, teardown, or cancellation.

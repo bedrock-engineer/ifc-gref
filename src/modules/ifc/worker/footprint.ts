@@ -27,10 +27,7 @@ interface Storey {
  * MiniBIM-style "Referentie-object" proxies are tiny markers at the survey /
  * CRS origin and would drag the convex hull far beyond the actual building.
  */
-function findReferencePointIds(
-  ifcAPI: IfcAPI,
-  modelID: number,
-): Set<number> {
+function findReferencePointIds(ifcAPI: IfcAPI, modelID: number): Set<number> {
   const ids = new Set<number>();
   const proxyIds = ifcAPI.GetLineIDsWithType(modelID, IFCBUILDINGELEMENTPROXY);
   for (let index = 0; index < proxyIds.size(); index++) {
@@ -101,39 +98,42 @@ export async function extractFootprint(
   let included = 0;
   let skipped = 0;
 
-  await streamPlacedGeometries(modelID, ({ expressID, ifcClass, matrix, vertices }) => {
-    if (ifcClass === IFCSPACE || referencePointIds.has(expressID)) {
-      return;
-    }
+  await streamPlacedGeometries(
+    modelID,
+    ({ expressID, ifcClass, matrix, vertices }) => {
+      if (ifcClass === IFCSPACE || referencePointIds.has(expressID)) {
+        return;
+      }
 
-    const start = xy.length;
-    let zMin = Infinity;
-    let zMax = -Infinity;
-    for (let index = 0; index < vertices.length; index += 6) {
-      const x = vertices[index];
-      const y = vertices[index + 1];
-      const z = vertices[index + 2];
-      if (x === undefined || y === undefined || z === undefined) {
-        continue;
+      const start = xy.length;
+      let zMin = Infinity;
+      let zMax = -Infinity;
+      for (let index = 0; index < vertices.length; index += 6) {
+        const x = vertices[index];
+        const y = vertices[index + 1];
+        const z = vertices[index + 2];
+        if (x === undefined || y === undefined || z === undefined) {
+          continue;
+        }
+        transformPositionToIfcFrame(matrix, x, y, z, ifcXyz, 0);
+        const ifcZ = ifcXyz[2] ?? 0;
+        if (ifcZ < zMin) {
+          zMin = ifcZ;
+        }
+        if (ifcZ > zMax) {
+          zMax = ifcZ;
+        }
+        xy.push([ifcXyz[0] ?? 0, ifcXyz[1] ?? 0]);
       }
-      transformPositionToIfcFrame(matrix, x, y, z, ifcXyz, 0);
-      const ifcZ = ifcXyz[2] ?? 0;
-      if (ifcZ < zMin) {
-        zMin = ifcZ;
+      if (zMax >= sliceLo && zMin <= sliceHi) {
+        included += 1;
+      } else {
+        // Roll back: this mesh's Z range doesn't overlap the band.
+        xy.length = start;
+        skipped += 1;
       }
-      if (ifcZ > zMax) {
-        zMax = ifcZ;
-      }
-      xy.push([ifcXyz[0] ?? 0, ifcXyz[1] ?? 0]);
-    }
-    if (zMax >= sliceLo && zMin <= sliceHi) {
-      included += 1;
-    } else {
-      // Roll back: this mesh's Z range doesn't overlap the band.
-      xy.length = start;
-      skipped += 1;
-    }
-  });
+    },
+  );
 
   emitLog({
     source: "worker",

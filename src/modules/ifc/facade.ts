@@ -21,10 +21,7 @@ export interface IfcFacade {
    * the whole file in JS heap. `onProgress` receives a fraction between
    * 0 and 1 during parsing.
    */
-  open(
-    file: File,
-    onProgress?: (fraction: number) => void,
-  ): Promise<void>;
+  open(file: File, onProgress?: (fraction: number) => void): Promise<void>;
   /** Read georeferencing metadata from the currently open model. */
   readMetadata(): Promise<IfcMetadata>;
   /** Extract the 2D convex-hull footprint in local coordinates. */

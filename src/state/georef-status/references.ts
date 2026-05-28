@@ -1,8 +1,4 @@
-import {
-  type CrsDef,
-  type LngLat,
-  projectLocalToWgs84,
-} from "#modules/crs";
+import { type CrsDef, type LngLat, projectLocalToWgs84 } from "#modules/crs";
 import type { HelmertParams } from "#modules/helmert/solve";
 import type { IfcMetadata } from "#modules/ifc/worker";
 import type { MapReferences } from "./types";
@@ -53,9 +49,7 @@ export function deriveMapReferences(
   activeCrs: CrsDef | null,
 ): MapReferences {
   const mapConversion =
-    parameters && activeCrs
-      ? deriveMapConversion(parameters, activeCrs)
-      : null;
+    parameters && activeCrs ? deriveMapConversion(parameters, activeCrs) : null;
 
   const site = metadata.siteReference;
 

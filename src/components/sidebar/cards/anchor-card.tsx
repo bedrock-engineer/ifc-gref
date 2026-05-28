@@ -88,7 +88,9 @@ export function AnchorCard({
   const eastingNative =
     parameters?.easting == null ? null : parameters.easting / crsMetresPerUnit;
   const northingNative =
-    parameters?.northing == null ? null : parameters.northing / crsMetresPerUnit;
+    parameters?.northing == null
+      ? null
+      : parameters.northing / crsMetresPerUnit;
   const heightNative =
     parameters?.height == null ? null : parameters.height / crsMetresPerUnit;
 
@@ -120,12 +122,12 @@ export function AnchorCard({
             Northing, and Orthogonal Height.
           </p>
           <p>
-            Edit the fields directly, or click <strong>Pick on map</strong>{" "}
-            and click a location to set Easting/Northing from there. 
+            Edit the fields directly, or click <strong>Pick on map</strong> and
+            click a location to set Easting/Northing from there.
           </p>
           <p>
-            <strong>Reset to file</strong> restores the values from the
-            original IFC.
+            <strong>Reset to file</strong> restores the values from the original
+            IFC.
           </p>
         </CardHelpButton>
         <ProvenanceBadge provenance={provenance} />
@@ -187,7 +189,7 @@ export function AnchorCard({
           Click the map to set the anchor. Press Esc to cancel.
         </p>
       )}
-      
+
       {pickBlockedReason && !isPicking && (
         <p className="text-xs text-red-700">{pickBlockedReason}</p>
       )}
@@ -202,14 +204,14 @@ function describeValidation(
   if (validation.kind === "outside-area-of-use") {
     const area = def.areaOfUse ? ` (${def.areaOfUse})` : "";
     return (
-      `Easting/Northing falls outside EPSG:${def.code}'s area of use${area}.`
-      + ` Likely wrong CRS — check the CRS card.`
+      `Easting/Northing falls outside EPSG:${def.code}'s area of use${area}.` +
+      ` Likely wrong CRS — check the CRS card.`
     );
   }
   if (validation.kind === "inverse-failed") {
     return (
-      `Easting/Northing can't be inverse-projected in EPSG:${def.code}.`
-      + ` This value is likely out-of-range for the chosen projected CRS.`
+      `Easting/Northing can't be inverse-projected in EPSG:${def.code}.` +
+      ` This value is likely out-of-range for the chosen projected CRS.`
     );
   }
   return null;

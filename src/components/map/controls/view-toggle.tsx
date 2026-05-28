@@ -48,7 +48,9 @@ export function ViewToggle({
       className="flex overflow-hidden rounded bg-white shadow-[0_0_0_2px_rgba(0,0,0,0.1)] [--accent:#0f766e]"
     >
       <ToggleButton id="2d" className={BUTTON}>
-        <span className={`inline-block text-center ${LABEL_MIN_WIDTH}`}>2D</span>
+        <span className={`inline-block text-center ${LABEL_MIN_WIDTH}`}>
+          2D
+        </span>
       </ToggleButton>
       <ToggleButton
         id="3d"

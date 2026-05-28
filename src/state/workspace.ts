@@ -422,8 +422,6 @@ export function predictWriteEntity(
     params: parameters,
     fileHadRigidOperation: metadata.rawRigidOperation !== null,
   });
-  const sideEffects = metadata.rawSite
-    ? ["syncs IfcSite RefLat/RefLon"]
-    : [];
+  const sideEffects = metadata.rawSite ? ["syncs IfcSite RefLat/RefLon"] : [];
   return { entityName: target.entity, note: target.note, sideEffects };
 }

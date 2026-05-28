@@ -48,10 +48,17 @@ export async function extractMeshes(
     schema: ifcAPI.GetModelSchema(modelID),
     totalLines: ifcAPI.GetAllLines(modelID).size(),
     productCount: ifcAPI
-      .GetLineIDsWithType(modelID, 4_217_277_830 /* IFCPRODUCT is not exported */)
+      .GetLineIDsWithType(
+        modelID,
+        4_217_277_830 /* IFCPRODUCT is not exported */,
+      )
       .size(),
-    wallCount: ifcAPI.GetLineIDsWithType(modelID, 2_391_406_946 /* IFCWALL */).size(),
-    slabCount: ifcAPI.GetLineIDsWithType(modelID, 1_529_196_076 /* IFCSLAB */).size(),
+    wallCount: ifcAPI
+      .GetLineIDsWithType(modelID, 2_391_406_946 /* IFCWALL */)
+      .size(),
+    slabCount: ifcAPI
+      .GetLineIDsWithType(modelID, 1_529_196_076 /* IFCSLAB */)
+      .size(),
     siteCount: ifcAPI.GetLineIDsWithType(modelID, IFCSITE).size(),
     buildingCount: ifcAPI
       .GetLineIDsWithType(modelID, 4_031_249_490 /* IFCBUILDING */)

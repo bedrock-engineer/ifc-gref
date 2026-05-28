@@ -61,8 +61,7 @@ export function applyAnchor(
   let baseAltitude: number;
   let altitudeSource: string;
   if (parameters.height === 0) {
-    baseAltitude =
-      map.queryTerrainElevation([ll.longitude, ll.latitude]) ?? 0;
+    baseAltitude = map.queryTerrainElevation([ll.longitude, ll.latitude]) ?? 0;
     altitudeSource = "terrain";
   } else {
     baseAltitude = parameters.height;

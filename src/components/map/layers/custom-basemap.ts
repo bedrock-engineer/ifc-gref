@@ -27,7 +27,10 @@ export type CustomBasemapUrlError =
   | { kind: "empty" }
   | { kind: "not-url" }
   | { kind: "not-http" }
-  | { kind: "missing-placeholders"; missing: ReadonlyArray<"{z}" | "{x}" | "{y}"> };
+  | {
+      kind: "missing-placeholders";
+      missing: ReadonlyArray<"{z}" | "{x}" | "{y}">;
+    };
 
 const REQUIRED_PLACEHOLDERS = ["{z}", "{x}", "{y}"] as const;
 
@@ -76,4 +79,3 @@ export function describeCustomBasemapUrlError(
     }
   }
 }
-

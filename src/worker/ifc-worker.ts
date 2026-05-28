@@ -1,5 +1,5 @@
-import * as Comlink from 'comlink'
-import { setLogSink } from '#lib/log'
+import * as Comlink from "comlink";
+import { setLogSink } from "#lib/log";
 import {
   closeModel,
   extractFootprint,
@@ -10,7 +10,7 @@ import {
   saveModel,
   writeMapConversion,
   zeroSitePlacementLocation,
-} from '#modules/ifc/worker'
+} from "#modules/ifc/worker";
 
 /**
  * The Comlink-exposed API surface for the IFC worker. The main thread
@@ -32,8 +32,8 @@ const api = {
   saveModel,
   closeModel,
   setLogSink,
-}
+};
 
-export type IfcWorkerApi = typeof api
+export type IfcWorkerApi = typeof api;
 
-Comlink.expose(api)
+Comlink.expose(api);

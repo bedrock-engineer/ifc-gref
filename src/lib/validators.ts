@@ -9,7 +9,13 @@
  * IfcSite. (0, 0) is technically valid Null Island but in the BIM domain
  * it's always a "no reference set" signal — a real building is never there.
  */
-export function isValidLatLon({lat, lon}: {lat: number, lon: number}): boolean {
+export function isValidLatLon({
+  lat,
+  lon,
+}: {
+  lat: number;
+  lon: number;
+}): boolean {
   return (
     Number.isFinite(lat) &&
     Number.isFinite(lon) &&

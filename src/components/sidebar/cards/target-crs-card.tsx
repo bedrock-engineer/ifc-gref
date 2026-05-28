@@ -46,8 +46,8 @@ export function TargetCrsCard({
         <>
           <p>
             The Projected CRS to georeference into. Enter an EPSG code (e.g.{" "}
-            <code>28992</code> for RD New, <code>32631</code> for UTM zone
-            31N). The resolved name and area of use appear below the input.
+            <code>28992</code> for RD New, <code>32631</code> for UTM zone 31N).
+            The resolved name and area of use appear below the input.
           </p>
           <p>
             If the file already has an IfcProjectedCRS, it's used as the
@@ -136,9 +136,7 @@ function AccuracyBadge({ def }: AccuracyBadgeProps) {
     return null;
   }
   if (accuracy.kind === "trusted-override") {
-    return (
-      <div className="text-emerald-700">✓ {accuracy.note}</div>
-    );
+    return <div className="text-emerald-700">✓ {accuracy.note}</div>;
   }
   return <DegradedOverrideBadge code={def.code} accuracy={accuracy} />;
 }
@@ -153,7 +151,9 @@ function DegradedOverrideBadge({ code, accuracy }: DegradedOverrideBadgeProps) {
   const [isRetrying, startRetryTransition] = useTransition();
   const label = isRetrying
     ? "Retrying…"
-    : (retryable ? "Retry grid load" : "Cannot retry — file an issue");
+    : retryable
+      ? "Retry grid load"
+      : "Cannot retry — file an issue";
   return (
     <div className="space-y-1 border border-red-300 bg-red-50 p-2 text-red-800">
       <div>⚠ {accuracy.note}</div>

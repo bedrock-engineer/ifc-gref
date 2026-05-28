@@ -55,29 +55,33 @@ export async function extractSpaces(
   const minZByExpressID = new Map<number, number>();
   const ifcXyz = new Float64Array(3);
 
-  await streamPlacedGeometriesOfTypes(modelID, [IFCSPACE], ({ expressID, matrix, vertices }) => {
-    let bucket = pointsByExpressID.get(expressID);
-    if (!bucket) {
-      bucket = [];
-      pointsByExpressID.set(expressID, bucket);
-    }
-    let minZ = minZByExpressID.get(expressID) ?? Infinity;
-    for (let index = 0; index < vertices.length; index += 6) {
-      const x = vertices[index];
-      const y = vertices[index + 1];
-      const z = vertices[index + 2];
-      if (x === undefined || y === undefined || z === undefined) {
-        continue;
+  await streamPlacedGeometriesOfTypes(
+    modelID,
+    [IFCSPACE],
+    ({ expressID, matrix, vertices }) => {
+      let bucket = pointsByExpressID.get(expressID);
+      if (!bucket) {
+        bucket = [];
+        pointsByExpressID.set(expressID, bucket);
       }
-      transformPositionToIfcFrame(matrix, x, y, z, ifcXyz, 0);
-      bucket.push([ifcXyz[0] ?? 0, ifcXyz[1] ?? 0]);
-      const ifcZ = ifcXyz[2] ?? 0;
-      if (ifcZ < minZ) {
-        minZ = ifcZ;
+      let minZ = minZByExpressID.get(expressID) ?? Infinity;
+      for (let index = 0; index < vertices.length; index += 6) {
+        const x = vertices[index];
+        const y = vertices[index + 1];
+        const z = vertices[index + 2];
+        if (x === undefined || y === undefined || z === undefined) {
+          continue;
+        }
+        transformPositionToIfcFrame(matrix, x, y, z, ifcXyz, 0);
+        bucket.push([ifcXyz[0] ?? 0, ifcXyz[1] ?? 0]);
+        const ifcZ = ifcXyz[2] ?? 0;
+        if (ifcZ < minZ) {
+          minZ = ifcZ;
+        }
       }
-    }
-    minZByExpressID.set(expressID, minZ);
-  });
+      minZByExpressID.set(expressID, minZ);
+    },
+  );
 
   let groundMinZ = Infinity;
   for (const z of minZByExpressID.values()) {

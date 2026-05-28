@@ -60,7 +60,7 @@ export function suggest(
   const url = new URL(SUGGEST_URL);
   url.searchParams.set("q", query);
   url.searchParams.set("rows", "8");
-  
+
   return fetchJson(url, signal).andThen((raw) => {
     const parsed = SuggestResponseSchema.safeParse(raw);
     if (!parsed.success) {
@@ -69,7 +69,9 @@ export function suggest(
         cause: parsed.error,
       });
     }
-    return okAsync<Array<SuggestDocument>, PdokError>(parsed.data.response.docs);
+    return okAsync<Array<SuggestDocument>, PdokError>(
+      parsed.data.response.docs,
+    );
   });
 }
 

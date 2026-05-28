@@ -2,8 +2,8 @@
 
 @theme {
   --font-sans:
-    "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono:
     "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
@@ -39,10 +39,10 @@ body {
 
 /* Target the hidden input inside the Radio */
 /* Target BOTH the wrapper and the input */
-.group span:has(input[type="radio"]), 
+.group span:has(input[type="radio"]),
 .group input[type="radio"] {
   position: absolute !important;
-  top: 0 !important;   /* Move it to the TOP of the label */
+  top: 0 !important; /* Move it to the TOP of the label */
   left: 0 !important;
   width: 1px !important;
   height: 1px !important;

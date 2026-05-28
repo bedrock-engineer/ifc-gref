@@ -192,7 +192,7 @@ export function SurveyPointsCard({
       <div className="flex items-center justify-end">
         <CardHelpButton label="Help: Survey points">
           <p>Three ways to derive the georeferencing transform:</p>
-          
+
           <ul className="list-disc space-y-1 pl-4">
             <li>
               <strong>Encode existing</strong>: convert the file's{" "}
@@ -221,10 +221,9 @@ export function SurveyPointsCard({
 
           <p>
             With ≥2 points the fit absorbs the projection's combined scale
-            factor (~0.9999 in RDNew, down to 0.9996 at
-            UTM zone edges) into <code>Scale</code>, so you can paste raw
-            surveyor coordinates without pre-reducing ground distances to
-            grid.
+            factor (~0.9999 in RDNew, down to 0.9996 at UTM zone edges) into{" "}
+            <code>Scale</code>, so you can paste raw surveyor coordinates
+            without pre-reducing ground distances to grid.
           </p>
         </CardHelpButton>
       </div>

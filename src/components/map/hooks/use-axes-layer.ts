@@ -1,9 +1,6 @@
 import maplibregl, { type Map as MlMap, type Marker } from "maplibre-gl";
 import { type RefObject, useEffect, useRef } from "react";
-import {
-  transformProjectedToWgs84,
-  type CrsDef,
-} from "#modules/crs";
+import { transformProjectedToWgs84, type CrsDef } from "#modules/crs";
 import type { HelmertParams } from "#modules/helmert/solve";
 import {
   AXES_LINE_LAYER_ID,

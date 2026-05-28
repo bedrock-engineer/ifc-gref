@@ -85,7 +85,7 @@ export function RigidOperationSection({
                 : trimZeros(raw.firstCoordinate, 3)
             }
           />
-          
+
           <Row
             label="SecondCoordinate"
             value={
@@ -94,15 +94,15 @@ export function RigidOperationSection({
                 : trimZeros(raw.secondCoordinate, 3)
             }
           />
-          
+
           <Row
             label="Height"
             value={
               raw.height == null
                 ? "—" // prettier-ignore
-                : (role === "active"
+                : role === "active"
                   ? `${trimZeros(raw.height, 3)} ${mapUnitShort}`
-                  : trimZeros(raw.height, 3))
+                  : trimZeros(raw.height, 3)
             }
           />
           <Row label="TargetCRS" value={raw.targetCrsName ?? "—"} />

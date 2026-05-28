@@ -8,5 +8,7 @@ export function triggerDownload(blob: Blob, filename: string) {
   a.remove();
   // Defer revoke so Safari has time to start the download (Chrome/Firefox
   // are fine immediately, but the spec doesn't guarantee it).
-  setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
 }

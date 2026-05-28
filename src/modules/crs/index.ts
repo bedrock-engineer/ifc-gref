@@ -16,10 +16,7 @@ export {
   subscribeResolution,
   type ManifestSnapshot,
 } from "./manifest";
-export {
-  filterCrsOptions,
-  filterVerticalDatumOptions,
-} from "./options";
+export { filterCrsOptions, filterVerticalDatumOptions } from "./options";
 export {
   transformProjectedToWgs84,
   transformWgs84ToProjected,

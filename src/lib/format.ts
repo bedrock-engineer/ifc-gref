@@ -6,7 +6,7 @@
 export function formatBytes(bytes: number): string {
   let unit: "byte" | "kilobyte" | "megabyte" | "gigabyte";
   let value: number;
-  
+
   if (bytes >= 1e9) {
     unit = "gigabyte";
     value = bytes / 1e9;

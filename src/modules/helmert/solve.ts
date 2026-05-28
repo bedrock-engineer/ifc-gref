@@ -138,7 +138,8 @@ export function applyHelmert(local: XYZ, parameters: HelmertParams): XYZ {
   const sin = Math.sin(parameters.rotation);
   return {
     x: parameters.xScale * (cos * local.x - sin * local.y) + parameters.easting,
-    y: parameters.yScale * (sin * local.x + cos * local.y) + parameters.northing,
+    y:
+      parameters.yScale * (sin * local.x + cos * local.y) + parameters.northing,
     z: parameters.zScale * local.z + parameters.height,
   };
 }
@@ -160,10 +161,10 @@ const SCALE_EPSILON = 1e-9;
 
 export function isPureTranslation(parameters: HelmertParams): boolean {
   return (
-    Math.abs(parameters.rotation) < ROTATION_EPSILON
-    && Math.abs(parameters.xScale - 1) < SCALE_EPSILON
-    && Math.abs(parameters.yScale - 1) < SCALE_EPSILON
-    && Math.abs(parameters.zScale - 1) < SCALE_EPSILON
+    Math.abs(parameters.rotation) < ROTATION_EPSILON &&
+    Math.abs(parameters.xScale - 1) < SCALE_EPSILON &&
+    Math.abs(parameters.yScale - 1) < SCALE_EPSILON &&
+    Math.abs(parameters.zScale - 1) < SCALE_EPSILON
   );
 }
 
@@ -435,12 +436,18 @@ function solveLeastSquaresJoint(
     const index = Math.floor(x / 3);
     const k = x % 3;
     const point = points[index];
-    if (!point) {return Number.NaN;}
+    if (!point) {
+      return Number.NaN;
+    }
     const { local } = point;
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);
-    if (k === 0) {return S * (cos * local.x - sin * local.y) + E;}
-    if (k === 1) {return S * (sin * local.x + cos * local.y) + N;}
+    if (k === 0) {
+      return S * (cos * local.x - sin * local.y) + E;
+    }
+    if (k === 1) {
+      return S * (sin * local.x + cos * local.y) + N;
+    }
     return S * local.z + H;
   };
 
@@ -499,20 +506,20 @@ function solveLeastSquaresSplit(
   const initial = solveSinglePointFallback(points[0], context);
 
   const model = (parameters: Array<number>) => (x: number) => {
-    const [
-      S = Number.NaN,
-      theta = Number.NaN,
-      E = Number.NaN,
-      N = Number.NaN,
-    ] = parameters;
+    const [S = Number.NaN, theta = Number.NaN, E = Number.NaN, N = Number.NaN] =
+      parameters;
     const index = Math.floor(x / 2);
     const k = x % 2;
     const point = points[index];
-    if (!point) {return Number.NaN;}
+    if (!point) {
+      return Number.NaN;
+    }
     const { local } = point;
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);
-    if (k === 0) {return S * (cos * local.x - sin * local.y) + E;}
+    if (k === 0) {
+      return S * (cos * local.x - sin * local.y) + E;
+    }
     return S * (sin * local.x + cos * local.y) + N;
   };
 

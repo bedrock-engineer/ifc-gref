@@ -411,7 +411,7 @@ export function Workspace({
 
   async function handleApplySidecar(file: File) {
     let text: string;
-    
+
     try {
       text = await file.text();
     } catch (error) {
@@ -616,7 +616,7 @@ function deriveCoordinateOperationLabel(metadata: IfcMetadata): string {
   if (metadata.rawMapConversion?.entityName) {
     return metadata.rawMapConversion.entityName;
   }
-  
+
   return metadata.schema === "IFC2X3"
     ? "ePset_MapConversion"
     : "IfcMapConversion";

@@ -73,7 +73,12 @@ function SidecarTooltip({ text, children }: SidecarTooltipProps) {
         className="max-w-xs rounded bg-slate-900 px-2 py-1 text-xs text-white shadow-md data-entering:animate-in data-entering:fade-in data-exiting:animate-out data-exiting:fade-out"
       >
         <OverlayArrow>
-          <svg width={8} height={8} viewBox="0 0 8 8" className="fill-slate-900">
+          <svg
+            width={8}
+            height={8}
+            viewBox="0 0 8 8"
+            className="fill-slate-900"
+          >
             <path d="M0 0 L4 4 L8 0" />
           </svg>
         </OverlayArrow>
@@ -82,4 +87,3 @@ function SidecarTooltip({ text, children }: SidecarTooltipProps) {
     </TooltipTrigger>
   );
 }
-

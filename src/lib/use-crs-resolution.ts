@@ -7,7 +7,9 @@ import {
 } from "#modules/crs";
 
 const INVALID_CODE: CrsLookupState = { kind: "invalid-code" };
-const NO_OP_UNSUBSCRIBE = () => {};
+const NO_OP_UNSUBSCRIBE = () => {
+  /* empty */
+};
 
 /**
  * Per-code resolution state, plugged into the app-level CRS store via

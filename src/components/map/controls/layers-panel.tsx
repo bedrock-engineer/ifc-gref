@@ -156,7 +156,9 @@ export function LayersPanel({
             </RadioButton>
             <AriaButton
               aria-label={`Remove ${b.label}`}
-              onPress={() => { onRemoveCustomBasemap(b.id); }}
+              onPress={() => {
+                onRemoveCustomBasemap(b.id);
+              }}
               className="cursor-pointer rounded px-1 text-slate-400 outline-none hover:text-slate-700 data-focus-visible:ring-2 data-focus-visible:ring-slate-500"
             >
               ×
@@ -402,4 +404,3 @@ function makeUniqueId(existing: ReadonlyArray<string>): string {
   } while (existing.includes(candidate));
   return candidate;
 }
-

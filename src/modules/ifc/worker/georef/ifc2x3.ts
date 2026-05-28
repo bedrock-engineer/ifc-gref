@@ -33,7 +33,7 @@ import {
 } from "./shared";
 
 /**
- * IFC2X3 has no native IfcMapConversion. The community convention is 
+ * IFC2X3 has no native IfcMapConversion. The community convention is
  * two property sets on IfcSite: ePset_MapConversion holds the 7
  * transform fields, ePset_ProjectedCRS holds the target CRS name. Accept
  * both `ePset_` and `ePSet_` casings — files in the wild use both.
@@ -284,7 +284,7 @@ export function writeGeorefIfc2x3(
  * the ePSet read path and the ePSet remove path — both need the same
  * cheap-lookup-first traversal.
  */
-export function* iterateSitePsets(
+function* iterateSitePsets(
   ifcAPI: IfcAPI,
   modelID: number,
   siteID: number,

@@ -69,9 +69,13 @@ export function NavHelp() {
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Map navigation
           </div>
-          
+
           <dl className="space-y-1">
-            <ShortcutRow action="Pan" primary="drag" alt={<kbd className={KBD}>↑ ↓ ← →</kbd>} />
+            <ShortcutRow
+              action="Pan"
+              primary="drag"
+              alt={<kbd className={KBD}>↑ ↓ ← →</kbd>}
+            />
             <ShortcutRow
               action="Zoom"
               primary="scroll"

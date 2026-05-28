@@ -86,7 +86,7 @@ export function clearLog(): void {
   }
 
   entries = [];
-  
+
   for (const listener of listeners) {
     listener();
   }

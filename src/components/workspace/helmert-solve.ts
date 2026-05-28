@@ -80,7 +80,7 @@ export function createHelmertSolver({
       metadata,
       activeCrs,
     });
-    
+
     if (source.isErr()) {
       onError(source.error.message);
       return;

@@ -12,7 +12,7 @@ import { prefetchCrsManifest } from "#modules/crs";
 // unexpectedly, anything that would otherwise be a silent dead operation.
 // Routes to the ops panel; console.error preserves the stack for the
 // (BIM-pro) user who's debugging their own file.
-window.addEventListener("unhandledrejection", (event) => {
+globalThis.addEventListener("unhandledrejection", (event) => {
   event.preventDefault();
   const reason = event.reason;
   console.error(reason);

@@ -123,23 +123,34 @@ export function readGeorefIfc4(
     ifcMetresPerUnit,
   });
   const rawProjectedCrs = readRawProjectedCrsIfc4(target, mapUnitStatus);
-  if (mapUnitStatus === "absent") {
-    emitLog({
-      source: "worker",
-      message: `IfcProjectedCRS.MapUnit absent — defaulting to METRE (will write IfcSIUnit METRE on save).`,
-    });
-  } else if (mapUnitStatus === "recovered-from-scale") {
-    emitLog({
-      level: "warn",
-      source: "worker",
-      message: `IfcProjectedCRS.MapUnit malformed (Name absent) — recovered ${mapUnitMetresPerUnit} m/unit from IfcMapConversion.Scale (${onDiskScale}).`,
-    });
-  } else if (mapUnitStatus === "malformed-fallback") {
-    emitLog({
-      level: "warn",
-      source: "worker",
-      message: `IfcProjectedCRS.MapUnit malformed (Name absent) — Scale recovery failed; falling back to project length unit (${ifcMetresPerUnit} m).`,
-    });
+  switch (mapUnitStatus) {
+    case "absent": {
+      emitLog({
+        source: "worker",
+        message: `IfcProjectedCRS.MapUnit absent — defaulting to METRE (will write IfcSIUnit METRE on save).`,
+      });
+
+      break;
+    }
+    case "recovered-from-scale": {
+      emitLog({
+        level: "warn",
+        source: "worker",
+        message: `IfcProjectedCRS.MapUnit malformed (Name absent) — recovered ${mapUnitMetresPerUnit} m/unit from IfcMapConversion.Scale (${onDiskScale}).`,
+      });
+
+      break;
+    }
+    case "malformed-fallback": {
+      emitLog({
+        level: "warn",
+        source: "worker",
+        message: `IfcProjectedCRS.MapUnit malformed (Name absent) — Scale recovery failed; falling back to project length unit (${ifcMetresPerUnit} m).`,
+      });
+
+      break;
+    }
+    // No default
   }
 
   // IFC 4.3 IfcMapConversionScaled: per-spec, effective per-axis scale is
@@ -368,19 +379,19 @@ function readRawProjectedCrsIfc4(
  *  - Otherwise → `'explicit'` (mapUnit string is the source of truth,
  *    whether recognised or not; UI displays it verbatim)
  */
-function computeMapUnitStatus(args: {
+function computeMapUnitStatus(arguments_: {
   target: any;
   mapUnitMetresPerUnit: number;
   ifcMetresPerUnit: number;
 }): RawProjectedCrs["mapUnitStatus"] {
-  const { target, mapUnitMetresPerUnit, ifcMetresPerUnit } = args;
+  const { target, mapUnitMetresPerUnit, ifcMetresPerUnit } = arguments_;
   if (isMapUnitAbsent(target)) {
     return "absent";
   }
   if (isMapUnitNameMissing(target)) {
-    return mapUnitMetresPerUnit !== ifcMetresPerUnit
-      ? "recovered-from-scale"
-      : "malformed-fallback";
+    return mapUnitMetresPerUnit === ifcMetresPerUnit
+      ? "malformed-fallback"
+      : "recovered-from-scale";
   }
   return "explicit";
 }
@@ -456,10 +467,10 @@ export function writeGeorefIfc4(
   // pre-4.3 solveHelmertJoint sets all three equal; on 4.3 with anisotropic
   // params the dispatcher in writeMapConversion picks the Scaled writer.
   const onDiskScale =
-    parameters.xScale
-    * onDiskScaleRatio(ifcMetresPerUnit, setup.mapUnitMetresPerUnit);
+    parameters.xScale *
+    onDiskScaleRatio(ifcMetresPerUnit, setup.mapUnitMetresPerUnit);
 
-  const [e, n, h] = lengthTripleInMapUnit(
+  const [easting, northing, height] = lengthTripleInMapUnit(
     ifcAPI,
     modelID,
     parameters,
@@ -473,9 +484,9 @@ export function writeGeorefIfc4(
     IFCMAPCONVERSION,
     new Handle(setup.sourceContextID),
     setup.projectedCRS,
-    e,
-    n,
-    h,
+    easting,
+    northing,
+    height,
     ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisAbscissa),
     ifcAPI.CreateIfcType(modelID, IFCREAL, setup.xAxisOrdinate),
     ifcAPI.CreateIfcType(modelID, IFCREAL, onDiskScale),
@@ -789,8 +800,12 @@ function findPreservableMapUnit(
   // valid to preserve. GetLineIDsWithType returns 0 entries on pre-4.3
   // schemas, so the RigidOp branch is a safe no-op on older files.
   const target =
-    findFirstTargetCrs(ifcAPI, modelID, IFCMAPCONVERSION, /* inherited */ true)
-    ?? findFirstTargetCrs(ifcAPI, modelID, IFCRIGIDOPERATION, false);
+    findFirstTargetCrs(
+      ifcAPI,
+      modelID,
+      IFCMAPCONVERSION,
+      /* inherited */ true,
+    ) ?? findFirstTargetCrs(ifcAPI, modelID, IFCRIGIDOPERATION, false);
   const mapUnit = target?.MapUnit;
   if (!mapUnit) {
     return null;

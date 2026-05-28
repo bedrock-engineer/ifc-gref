@@ -1,6 +1,7 @@
 import type { PredictedWriteEntity } from "#state/workspace";
 import { DownloadIcon } from "@radix-ui/react-icons";
 import { Button } from "../../input/button";
+import type { ReactNode } from "react";
 
 interface SaveCardProps {
   busy: boolean;
@@ -46,17 +47,26 @@ export function SaveCard({
   predictedWriteEntity,
   onWrite,
 }: SaveCardProps) {
+  let blockedMessage: ReactNode | null = null;
+
+  if (blockedReason) {
+    blockedMessage = (
+      <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
+        {blockedReason}
+      </p>
+    );
+  } else if (warning) {
+    blockedMessage = (
+      <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        {warning}
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-2 border-t border-slate-200 bg-white p-4">
-      {blockedReason ? (
-        <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
-          {blockedReason}
-        </p>
-      ) : warning ? (
-        <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          {warning}
-        </p>
-      ) : null}
+      {blockedMessage}
+
       {predictedWriteEntity && !blockedReason && (
         <p className="text-xs text-slate-500">
           Will write:{" "}
@@ -95,7 +105,7 @@ export function SaveCard({
         ) : (
           <>
             <DownloadIcon />
-            Download georeferenced IFC 
+            Download georeferenced IFC
           </>
         )}
       </Button>

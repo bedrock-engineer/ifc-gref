@@ -101,7 +101,7 @@ export interface RawPostalAddress {
   description: string | null;
   userDefinedPurpose: string | null;
   internalLocation: string | null;
-  addressLines: string[] | null;
+  addressLines: Array<string> | null;
   postalBox: string | null;
   town: string | null;
   region: string | null;
@@ -249,7 +249,11 @@ function readSiteEntity(ifcAPI: IfcAPI, modelID: number): any {
   if (!site) {
     return null;
   }
-  site.ObjectPlacement = flattenReference(ifcAPI, modelID, site.ObjectPlacement);
+  site.ObjectPlacement = flattenReference(
+    ifcAPI,
+    modelID,
+    site.ObjectPlacement,
+  );
   site.SiteAddress = flattenReference(ifcAPI, modelID, site.SiteAddress);
   return site;
 }
@@ -455,16 +459,17 @@ function readAxis2Placement(
     return null;
   }
   const coords: Array<any> | undefined = placement.Location?.Coordinates;
-  const location = Array.isArray(coords) && coords.length >= 2
-    ? {
-        x: Number(rawValue(coords[0])) * ifcMetresPerUnit,
-        y: Number(rawValue(coords[1])) * ifcMetresPerUnit,
-        z:
-          coords.length >= 3
-            ? Number(rawValue(coords[2])) * ifcMetresPerUnit
-            : 0,
-      }
-    : null;
+  const location =
+    Array.isArray(coords) && coords.length >= 2
+      ? {
+          x: Number(rawValue(coords[0])) * ifcMetresPerUnit,
+          y: Number(rawValue(coords[1])) * ifcMetresPerUnit,
+          z:
+            coords.length >= 3
+              ? Number(rawValue(coords[2])) * ifcMetresPerUnit
+              : 0,
+        }
+      : null;
   return {
     location,
     axis: readDirectionRatios3(placement.Axis),

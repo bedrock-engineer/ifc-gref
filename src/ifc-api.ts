@@ -68,7 +68,12 @@ export function getIfc(): IfcFacade {
     async extractSpaces() {
       return api.extractSpaces(requireModel());
     },
-    async writeMapConversion(epsgCode, verticalDatum, parameters, siteReference) {
+    async writeMapConversion(
+      epsgCode,
+      verticalDatum,
+      parameters,
+      siteReference,
+    ) {
       await api.writeMapConversion(
         requireModel(),
         epsgCode,
@@ -94,11 +99,4 @@ export function getIfc(): IfcFacade {
 
   instance = { facade, worker };
   return facade;
-}
-
-export function disposeIfc(): void {
-  if (instance) {
-    instance.worker.terminate();
-    instance = null;
-  }
 }

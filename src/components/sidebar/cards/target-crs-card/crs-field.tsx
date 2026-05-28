@@ -169,7 +169,7 @@ export function CrsField({ initialCode, onCommit }: CrsFieldProps) {
           >
             {renderRow}
           </ListBox>
-          
+
           {truncated && (
             <div className="border-t border-slate-100 px-2 py-1 text-[11px] text-slate-500">
               Showing first {MAX_RESULTS} matches, keep typing to refine.

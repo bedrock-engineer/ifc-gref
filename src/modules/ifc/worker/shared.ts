@@ -19,11 +19,7 @@ import { unitToMetres } from "#modules/units/convert";
  * "Flattened" means references like ObjectPlacement, RelativePlacement, Location
  * are recursively expanded into nested objects instead of left as Handle refs.
  */
-export function firstOf(
-  ifcAPI: IfcAPI,
-  modelID: number,
-  type: number,
-): any {
+export function firstOf(ifcAPI: IfcAPI, modelID: number, type: number): any {
   const ids = ifcAPI.GetLineIDsWithType(modelID, type);
   if (ids.size() === 0) {
     return null;
@@ -83,7 +79,9 @@ export function dmsToDecimal(parts: any): number | null {
  * Inverse of `dmsToDecimal`. IFC convention: all four components share the
  * same sign (S/W are negative on every part, not just the degrees).
  */
-export function decimalToDms(decimal: number): [number, number, number, number] {
+export function decimalToDms(
+  decimal: number,
+): [number, number, number, number] {
   const sign = decimal < 0 ? -1 : 1;
   const abs = Math.abs(decimal);
   const degrees = Math.floor(abs);
@@ -92,12 +90,7 @@ export function decimalToDms(decimal: number): [number, number, number, number] 
   const secondsFloat = (minutesFloat - minutes) * 60;
   const seconds = Math.floor(secondsFloat);
   const microseconds = Math.round((secondsFloat - seconds) * 1e6);
-  return [
-    sign * degrees,
-    sign * minutes,
-    sign * seconds,
-    sign * microseconds,
-  ];
+  return [sign * degrees, sign * minutes, sign * seconds, sign * microseconds];
 }
 
 export function expressIDOf(o: any): number | null {
@@ -207,8 +200,8 @@ export function buildHelmertFromFields(
 ): HelmertParams {
   const { mapUnitMetresPerUnit, ifcMetresPerUnit } = units;
   const scale =
-    Number(fields.scale ?? 1)
-    / onDiskScaleRatio(ifcMetresPerUnit, mapUnitMetresPerUnit);
+    Number(fields.scale ?? 1) /
+    onDiskScaleRatio(ifcMetresPerUnit, mapUnitMetresPerUnit);
   const factorX = Number(fields.factorX ?? 1);
   const factorY = Number(fields.factorY ?? 1);
   const factorZ = Number(fields.factorZ ?? 1);
@@ -242,7 +235,10 @@ export function buildHelmertFromFields(
  *    factor is exact, and US-survey-foot is rare enough as a MapUnit
  *    that the 2 ppm aliasing to international foot is tolerable.
  */
-export function nameToMetresPerUnit(prefix: string, name: string): number | null {
+export function nameToMetresPerUnit(
+  prefix: string,
+  name: string,
+): number | null {
   const fullName = `${prefix}${name}`;
   switch (fullName) {
     case "METRE": {
@@ -325,9 +321,9 @@ function deriveMapUnitFromScale(
   onDiskScale: number | undefined,
 ): number {
   if (
-    onDiskScale == undefined
-    || !Number.isFinite(onDiskScale)
-    || onDiskScale <= 0
+    onDiskScale == undefined ||
+    !Number.isFinite(onDiskScale) ||
+    onDiskScale <= 0
   ) {
     return projectFallback;
   }
@@ -432,7 +428,10 @@ function sitesAggregatedUnderProject(
       }
       for (const child of related) {
         const childId = expressIDOf(child);
-        if (childId != null && ifcAPI.GetLineType(modelID, childId) === IFCSITE) {
+        if (
+          childId != null &&
+          ifcAPI.GetLineType(modelID, childId) === IFCSITE
+        ) {
           siteIds.add(childId);
         }
       }

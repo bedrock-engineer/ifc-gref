@@ -140,25 +140,28 @@ export function MapConversionSection({
           <Row label="XAxisOrdinate" value={trimZeros(raw.xAxisOrdinate, 6)} />
           <Row label="↳ Rotation" value={`${trimZeros(rotationDeg, 4)}°`} />
           <Row label="↳ Bearing" value={`${trimZeros(bearingDeg, 4)}°`} />
-          {isScaled && raw.factorX != null && raw.factorY != null && raw.factorZ != null && (
-            <>
-              <Row label="FactorX" value={trimZeros(raw.factorX, 6)} />
-              <Row label="FactorY" value={trimZeros(raw.factorY, 6)} />
-              <Row label="FactorZ" value={trimZeros(raw.factorZ, 6)} />
-              <Row
-                label="↳ Effective xScale"
-                value={trimZeros(raw.scale * raw.factorX, 6)}
-              />
-              <Row
-                label="↳ Effective yScale"
-                value={trimZeros(raw.scale * raw.factorY, 6)}
-              />
-              <Row
-                label="↳ Effective zScale"
-                value={trimZeros(raw.scale * raw.factorZ, 6)}
-              />
-            </>
-          )}
+          {isScaled &&
+            raw.factorX != null &&
+            raw.factorY != null &&
+            raw.factorZ != null && (
+              <>
+                <Row label="FactorX" value={trimZeros(raw.factorX, 6)} />
+                <Row label="FactorY" value={trimZeros(raw.factorY, 6)} />
+                <Row label="FactorZ" value={trimZeros(raw.factorZ, 6)} />
+                <Row
+                  label="↳ Effective xScale"
+                  value={trimZeros(raw.scale * raw.factorX, 6)}
+                />
+                <Row
+                  label="↳ Effective yScale"
+                  value={trimZeros(raw.scale * raw.factorY, 6)}
+                />
+                <Row
+                  label="↳ Effective zScale"
+                  value={trimZeros(raw.scale * raw.factorZ, 6)}
+                />
+              </>
+            )}
         </dl>
       </DisclosurePanel>
     </Disclosure>

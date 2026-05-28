@@ -36,11 +36,7 @@ function customBasemapLayerId(id: string): string {
 
 export function useMapLayers(
   mapRef: RefObject<MlMap | null>,
-  {
-    basemap,
-    overlays,
-    customBasemaps,
-  }: UseMapLayersArguments,
+  { basemap, overlays, customBasemaps }: UseMapLayersArguments,
 ): void {
   // Live handles for custom overlays, keyed by overlay id. Held in a ref
   // so it survives re-renders; teardown runs on unmount.
@@ -48,38 +44,41 @@ export function useMapLayers(
     new Map(),
   );
 
-  useEffect(function syncMapLayers() {
-    const map = mapRef.current;
-    if (!map) {
-      return;
-    }
+  useEffect(
+    function syncMapLayers() {
+      const map = mapRef.current;
+      if (!map) {
+        return;
+      }
 
-    // `cancelled` guards against the map being torn down while a
-    // lazy-import of a custom overlay is in flight.
-    let cancelled = false;
+      // `cancelled` guards against the map being torn down while a
+      // lazy-import of a custom overlay is in flight.
+      let cancelled = false;
 
-    const cleanupReady = runWhenMapReady(map, () => {
-      syncCustomBasemaps(map, customBasemaps, basemap);
-      syncBasemaps(map, basemap);
-      syncRasterOverlays(map, overlays);
-      syncCustomOverlays(
-        map,
-        overlays,
-        customHandlesRef.current,
-        () => cancelled,
-      ).catch((error: unknown) => {
-        emitLog({
-          level: "error",
-          message: `Map layer setup failed: ${error instanceof Error ? error.message : String(error)}`,
+      const cleanupReady = runWhenMapReady(map, () => {
+        syncCustomBasemaps(map, customBasemaps, basemap);
+        syncBasemaps(map, basemap);
+        syncRasterOverlays(map, overlays);
+        syncCustomOverlays(
+          map,
+          overlays,
+          customHandlesRef.current,
+          () => cancelled,
+        ).catch((error: unknown) => {
+          emitLog({
+            level: "error",
+            message: `Map layer setup failed: ${error instanceof Error ? error.message : String(error)}`,
+          });
         });
       });
-    });
 
-    return () => {
-      cancelled = true;
-      cleanupReady();
-    };
-  }, [mapRef, basemap, overlays, customBasemaps]);
+      return () => {
+        cancelled = true;
+        cleanupReady();
+      };
+    },
+    [mapRef, basemap, overlays, customBasemaps],
+  );
 
   useEffect(function disposeCustomOverlaysOnUnmount() {
     const ref = customHandlesRef;
@@ -136,8 +135,7 @@ function syncCustomBasemaps(
 
   // Insert before the first known basemap layer so registry basemaps and
   // user basemaps share the same band of the layer stack.
-  const insertBefore = BASEMAPS.find((b) => map.getLayer(b.layer.id))
-    ?.layer.id;
+  const insertBefore = BASEMAPS.find((b) => map.getLayer(b.layer.id))?.layer.id;
 
   for (const b of basemaps) {
     const layerId = customBasemapLayerId(b.id);
@@ -167,10 +165,7 @@ function syncCustomBasemaps(
   }
 }
 
-function syncRasterOverlays(
-  map: MlMap,
-  overlays: Record<OverlayId, boolean>,
-) {
+function syncRasterOverlays(map: MlMap, overlays: Record<OverlayId, boolean>) {
   for (const overlay of OVERLAYS) {
     if (overlay.kind !== "raster" || !map.getLayer(overlay.layer.id)) {
       continue;

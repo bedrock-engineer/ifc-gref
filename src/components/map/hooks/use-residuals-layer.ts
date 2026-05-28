@@ -6,7 +6,11 @@ import {
   type HelmertParams,
   type PointPair,
 } from "#modules/helmert/solve";
-import { RESIDUAL_FIT_COLOR, RESIDUALS_FIT_LAYER_ID, RESIDUALS_SOURCE_ID } from "../style";
+import {
+  RESIDUAL_FIT_COLOR,
+  RESIDUALS_FIT_LAYER_ID,
+  RESIDUALS_SOURCE_ID,
+} from "../style";
 import { runWhenMapReady } from "./run-when-map-ready";
 
 /**
@@ -61,10 +65,7 @@ function buildFeatureCollection(
   points: Array<PointPair> | null,
   params: HelmertParams | null,
   activeCrs: CrsDef | null,
-): GeoJSON.FeatureCollection<
-  GeoJSON.Point,
-  ResidualFeatureProperties
-> | null {
+): GeoJSON.FeatureCollection<GeoJSON.Point, ResidualFeatureProperties> | null {
   if (!points || points.length === 0 || !params || !activeCrs) {
     return null;
   }
@@ -176,11 +177,7 @@ function syncNumberMarkers(
   }
 }
 
-function createNumberMarker(
-  map: MlMap,
-  label: string,
-  lngLat: LonLat,
-): Marker {
+function createNumberMarker(map: MlMap, label: string, lngLat: LonLat): Marker {
   const element = document.createElement("div");
   element.textContent = label;
   element.style.cssText = [

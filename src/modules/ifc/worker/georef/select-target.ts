@@ -58,9 +58,9 @@ export function selectWriteTarget({
   // Any deliberate edit (rotation slider, non-1 scale typed in) crosses
   // `isPureTranslation`'s 1e-9 thresholds and forces the upgrade below.
   if (
-    schema === "IFC4X3"
-    && fileHadRigidOperation
-    && isPureTranslation(params)
+    schema === "IFC4X3" &&
+    fileHadRigidOperation &&
+    isPureTranslation(params)
   ) {
     return { entity: "IfcRigidOperation", note: "translation-only" };
   }

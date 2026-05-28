@@ -39,5 +39,6 @@ export type OverlayId = string;
 
 export const DEFAULT_BASEMAP_ID: BasemapId = BASEMAPS[0]?.id ?? "osm";
 
-export const INITIAL_OVERLAYS: Record<OverlayId, boolean> =
-  Object.fromEntries(OVERLAYS.map((o) => [o.id, false]));
+export const INITIAL_OVERLAYS: Record<OverlayId, boolean> = Object.fromEntries(
+  OVERLAYS.map((o) => [o.id, false]),
+);

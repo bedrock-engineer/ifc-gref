@@ -59,9 +59,7 @@ const HorizontalEntrySchema = z.object({
   name: z.string(),
   proj4: z.string(),
   area: z.string().nullable(),
-  bbox: z
-    .tuple([z.number(), z.number(), z.number(), z.number()])
-    .nullable(),
+  bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).nullable(),
   // Override metadata baked in at build time. See
   // docs/crs-datum-grids.md and scripts/build-crs-manifest.mjs.
   accuracyNote: z.string().nullable().optional(),
@@ -72,9 +70,7 @@ const VerticalEntrySchema = z.object({
   code: z.number(),
   name: z.string(),
   area: z.string().nullable(),
-  bbox: z
-    .tuple([z.number(), z.number(), z.number(), z.number()])
-    .nullable(),
+  bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).nullable(),
 });
 
 const IndexFileSchema = z.object({
@@ -274,7 +270,9 @@ const resolutionSubscribers = new Map<number, Set<() => void>>();
 function setResolutionState(code: number, state: CrsLookupState): void {
   resolutionStates.set(code, state);
   const subs = resolutionSubscribers.get(code);
-  if (!subs) {return;}
+  if (!subs) {
+    return;
+  }
   for (const subscriber of subs) {
     subscriber();
   }
@@ -296,7 +294,9 @@ export function subscribeResolution(
   subs.add(listener);
   return () => {
     const set = resolutionSubscribers.get(code);
-    if (!set) {return;}
+    if (!set) {
+      return;
+    }
     set.delete(listener);
     if (set.size === 0) {
       resolutionSubscribers.delete(code);
@@ -480,10 +480,7 @@ function readMetresPerUnit(epsgKey: string): number {
 const CDN_BASE = "https://cdn.proj.org";
 
 const loadedGrids = new Set<string>();
-const inflightGrids = new Map<
-  string,
-  Promise<Result<void, OverrideError>>
->();
+const inflightGrids = new Map<string, Promise<Result<void, OverrideError>>>();
 
 /**
  * Load a binary datum-shift grid into proj4js by key. Idempotent: a second
@@ -493,9 +490,13 @@ const inflightGrids = new Map<
  * (404, parse error) return immediately.
  */
 async function loadGrid(spec: GridSpec): Promise<Result<void, OverrideError>> {
-  if (loadedGrids.has(spec.key)) {return ok();}
+  if (loadedGrids.has(spec.key)) {
+    return ok();
+  }
   const inflight = inflightGrids.get(spec.key);
-  if (inflight) {return inflight;}
+  if (inflight) {
+    return inflight;
+  }
 
   const promise = (async (): Promise<Result<void, OverrideError>> => {
     let result = await attemptLoadGrid(spec);

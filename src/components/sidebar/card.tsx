@@ -20,9 +20,10 @@ export function Card({ title, children, headerAside, help }: CardProps) {
       <header className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
         <div className="flex items-center gap-1">
-          {help && (
+          {help ? (
             <CardHelpButton label={`Help: ${title}`}>{help}</CardHelpButton>
-          )}
+          ) : null}
+
           {headerAside}
         </div>
       </header>
