@@ -122,16 +122,12 @@ function GuideContent() {
           <Code>TrueNorth</Code> in the file, or from the solver after a
           survey-point fit. If the model looks skew on the map relative to its
           surroundings, nudge the angle until it lines up. The raw{" "}
-          <Code>XAxisAbscissa</Code> / <Code>XAxisOrdinate</Code> pair that
-          goes into <Code>IfcMapConversion</Code> is shown under the field for
+          <Code>XAxisAbscissa</Code> / <Code>XAxisOrdinate</Code> pair that goes
+          into <Code>IfcMapConversion</Code> is shown under the field for
           reference.
         </p>
 
-        <p className="text-xs text-slate-500">
-          Scale stays at 1.0 for new files — IFC geometry and projected CRSes
-          are both in metres, so anything else is usually unit confusion.
-          IFC 4.3 files get a separate vertical scale.
-        </p>
+        <p>IFC 4.3 can also files specify a separate vertical scale.</p>
       </Section>
 
       <Section title="6. Save">
@@ -165,7 +161,7 @@ function GuideContent() {
           <ShortcutRow keys={["PgUp", "PgDn"]} desc="step 10×" />
 
           <ShortcutRow keys={["Home", "End"]} desc="min / max" />
-          
+
           <ShortcutRow keys={["Scroll"]} desc="step when focused" />
           {/* <ShortcutRow keys={["Esc"]} desc="cancel anchor pick" /> */}
         </ul>
