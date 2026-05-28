@@ -52,6 +52,15 @@ export interface RawSite {
   description: string | null;
   objectType: string | null;
   longName: string | null;
+  /**
+   * Flattened `IfcSite.ObjectPlacement.RelativePlacement` (an
+   * `IfcAxis2Placement3D`). Carries Location (metres), Axis (Z-direction
+   * ratios), and RefDirection (X-direction ratios). Surfaced verbatim so
+   * the IfcSite section can flag non-default rotation, which composes
+   * with IfcMapConversion's `XAxisAbscissa/Ordinate` and is a common
+   * source of "model is rotated wrong" bugs.
+   */
+  placement: RawAxis2Placement | null;
   refLatitude: number | null;
   refLongitude: number | null;
   /** Metres. */
@@ -308,6 +317,10 @@ function readRawSite(site: any, ifcMetresPerUnit: number): RawSite | null {
     description: stringOrNull(site.Description),
     objectType: stringOrNull(site.ObjectType),
     longName: stringOrNull(site.LongName),
+    placement: readAxis2Placement(
+      site.ObjectPlacement?.RelativePlacement,
+      ifcMetresPerUnit,
+    ),
     refLatitude: lat,
     refLongitude: lon,
     refElevation: elev == null ? null : Number(elev) * ifcMetresPerUnit,

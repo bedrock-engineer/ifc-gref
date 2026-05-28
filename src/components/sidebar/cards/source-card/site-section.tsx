@@ -24,6 +24,32 @@ function formatPlacementLocation(location: XYZ | null): string {
   return `(${trimZeros(x, 3)}, ${trimZeros(y, 3)}, ${trimZeros(z, 3)}) m`;
 }
 
+function formatDirection(ratios: readonly [number, number, number]): string {
+  const [x, y, z] = ratios;
+  return `(${trimZeros(x, 6)}, ${trimZeros(y, 6)}, ${trimZeros(z, 6)})`;
+}
+
+// Floating-point tolerance for direction-ratio comparison: tight enough
+// to reject any genuine rotation, loose enough to absorb the noise that
+// authoring tools sometimes write into IfcDirection ratios. Treating a
+// missing direction as "matches" mirrors the IFC spec, which lets
+// IfcAxis2Placement3D omit Axis/RefDirection to imply (0,0,1)/(1,0,0).
+const DIRECTION_EPSILON = 1e-9;
+
+function isCloseTo(
+  ratios: readonly [number, number, number] | null,
+  expected: readonly [number, number, number],
+): boolean {
+  if (ratios == null) {
+    return true;
+  }
+  return (
+    Math.abs(ratios[0] - expected[0]) < DIRECTION_EPSILON &&
+    Math.abs(ratios[1] - expected[1]) < DIRECTION_EPSILON &&
+    Math.abs(ratios[2] - expected[2]) < DIRECTION_EPSILON
+  );
+}
+
 interface SiteSectionProps {
   raw: RawSite | null;
   /**
@@ -126,6 +152,22 @@ export function SiteSection({
             label="ObjectPlacement.Location"
             value={formatPlacementLocation(placementLocation)}
           />
+
+          {raw.placement?.axis != null &&
+            !isCloseTo(raw.placement.axis, [0, 0, 1]) && (
+              <Row
+                label="ObjectPlacement.Axis"
+                value={formatDirection(raw.placement.axis)}
+              />
+            )}
+
+          {raw.placement?.refDirection != null &&
+            !isCloseTo(raw.placement.refDirection, [1, 0, 0]) && (
+              <Row
+                label="ObjectPlacement.RefDirection"
+                value={formatDirection(raw.placement.refDirection)}
+              />
+            )}
 
           <Row
             label="RefLatitude"
