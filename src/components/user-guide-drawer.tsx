@@ -140,8 +140,9 @@ function GuideContent() {
 
         <p>
           You can use <Code>Download .ifcgref.json</Code> on the Source card to
-          save just the georeferencing parameters as a JSON file. This is useful
-          for georeferencing multiple files with the same parameters.
+          save just the georeferencing parameters as a JSON file. You can upload
+          this file to another IFC model. This is useful for georeferencing
+          multiple files with the same parameters.
         </p>
       </Section>
 
