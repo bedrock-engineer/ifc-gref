@@ -17,6 +17,7 @@ import {
   sidecarToParams,
   type SidecarError,
 } from "#lib/ifcgref-sidecar";
+import { triggerDownload } from "#lib/download";
 import { emitLog } from "#lib/log";
 import { type HelmertParams } from "#modules/helmert/solve";
 import type { IfcMetadata } from "#modules/ifc/worker";
@@ -398,13 +399,8 @@ export function Workspace({
     });
     const json = JSON.stringify(sidecar, null, 2);
     const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = sidecarFilenameFor(filename);
-    anchor.click();
-    URL.revokeObjectURL(url);
-    
+    triggerDownload(blob, sidecarFilenameFor(filename));
+
     emitLog({
       message:
         `Exported .ifcgref.json file (EPSG:${activeCrs.code}` +
