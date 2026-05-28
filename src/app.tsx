@@ -1,15 +1,20 @@
 import type { IfcMetadata } from "#modules/ifc/worker";
 import { detectBakedProjectedOrigin } from "#state/georef-status/derive-view";
 import { findingToLogMessage } from "#state/georef-status/format";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { I18nProvider } from "react-aria-components";
 import { DiagnosticsPanel } from "./components/diagnostics-panel";
 import { Header } from "./components/header";
 import { IdleBody } from "./components/idle-body";
+import { UserGuideDrawer } from "./components/user-guide-drawer";
 import { Workspace } from "./components/workspace";
 import { getIfc } from "./ifc-api";
 import { formatBytes } from "./lib/format";
 import { clearLog, emitLog } from "./lib/log";
+import { useStickyState } from "./lib/use-sticky-state";
+
+const GUIDE_OPEN_WIDTH = "360px";
+const GUIDE_CLOSED_WIDTH = "0px";
 
 export type Stage =
   | { kind: "idle" }
@@ -24,6 +29,16 @@ export type Stage =
 
 export default function App() {
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
+  const [isGuideOpen, setGuideOpen] = useStickyState<boolean>(
+    "ifc-gref:guide-open",
+    false,
+  );
+
+  const gridStyle: CSSProperties = {
+    ["--guide-width" as string]: isGuideOpen
+      ? GUIDE_OPEN_WIDTH
+      : GUIDE_CLOSED_WIDTH,
+  };
 
   async function handleFile(file: File) {
     clearLog();
@@ -100,12 +115,14 @@ export default function App() {
     // NumberField renders with a dot decimal separator regardless of the
     // browser locale, matching the `.toFixed()` style used elsewhere.
     <I18nProvider locale="en-US">
-      <div className="main-grid overflow-hidden bg-slate-50">
+      <div className="main-grid overflow-hidden bg-slate-50" style={gridStyle}>
         <Header
           filename={stage.kind === "loaded" ? stage.filename : null}
           onFile={(file) => {
             void handleFile(file);
           }}
+          isGuideOpen={isGuideOpen}
+          onToggleGuide={setGuideOpen}
         />
 
         {stage.kind === "loaded" ? (
@@ -129,6 +146,13 @@ export default function App() {
             }}
           />
         )}
+
+        <UserGuideDrawer
+          isOpen={isGuideOpen}
+          onClose={() => {
+            setGuideOpen(false);
+          }}
+        />
 
         <DiagnosticsPanel />
       </div>

@@ -27,14 +27,15 @@ body {
 .main-grid {
   display: grid;
   grid-template-areas:
-    "header header"
-    "sidebar map"
-    "diagnostics diagnostics";
+    "header header header"
+    "sidebar map guide"
+    "diagnostics diagnostics diagnostics";
   height: 100%;
   overflow: hidden;
   grid-template-rows: min-content 1fr min-content;
-  grid-template-columns: 424px 1fr;
+  grid-template-columns: 424px 1fr var(--guide-width, 0px);
   max-height: 100%;
+  transition: grid-template-columns 220ms ease;
 }
 
 /* Target the hidden input inside the Radio */
