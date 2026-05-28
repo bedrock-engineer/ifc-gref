@@ -25,10 +25,12 @@ interface SourceCardProps {
   /** EPSG code of the active CRS, used in the outside-bbox tooltip. */
   activeCrsCode: number | null;
   /**
-   * When the file's local origin looks like projected coordinates baked
-   * into IfcSite.ObjectPlacement (per `detectBakedProjectedOrigin`), this
-   * carries the offending XYZ so the card can flag it inline next to the
-   * Local origin row. Mutually exclusive with `doubleBakedOrigin`.
+   * When the file's IfcSite placement looks like projected coordinates
+   * baked into IfcSite.ObjectPlacement (per `detectBakedProjectedOrigin`),
+   * this carries the offending XYZ so the card can render a top-level
+   * notice. The placement value itself is shown inside the IfcSite section
+   * (ObjectPlacement.Location row). Mutually exclusive with
+   * `doubleBakedOrigin`.
    */
   bakedProjectedOrigin: XYZ | null;
   /**
@@ -139,11 +141,6 @@ export function SourceCard({
           label="Length unit"
           value={<LengthUnitValue name={metadata.lengthUnit} />}
         />
-
-        <Row
-          label="Local origin"
-          value={formatLocalOrigin(metadata.localOrigin)}
-        />
       </dl>
 
       {bakedProjectedOrigin && (
@@ -181,6 +178,7 @@ export function SourceCard({
       <div className="space-y-2">
         <SiteSection
           raw={metadata.rawSite}
+          placementLocation={metadata.localOrigin}
           outsideBbox={siteOutsideBbox}
           activeCrsCode={activeCrsCode}
           projectLengthUnitShort={projectLengthUnit.short}
@@ -316,13 +314,6 @@ function LengthUnitValue({ name }: { name: string }) {
   );
 }
 
-function formatLocalOrigin(origin: IfcMetadata["localOrigin"]): string {
-  if (!origin) {
-    return "—";
-  }
-  return `(${origin.x.toFixed(4)}, ${origin.y.toFixed(4)}, ${origin.z.toFixed(4)})`;
-}
-
 interface DoubleBakedOriginNoticeProps {
   origin: XYZ;
   isPending: boolean;
@@ -343,13 +334,13 @@ function DoubleBakedOriginNotice({
   return (
     <div className="space-y-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
       <p>
-        The local origin shown above —{" "}
+        <code>IfcSite.ObjectPlacement</code> carries{" "}
         <code>
           ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)}) m
         </code>{" "}
-        — duplicates the offset already carried by <code>IfcMapConversion</code>.
-        Applying the Helmert to the baked local origin places geometry outside
-        the active CRS (double-translation). The offset belongs in{" "}
+        that duplicates the offset already in <code>IfcMapConversion</code>.
+        Applying the Helmert to the baked placement places geometry outside the
+        active CRS (double-translation). The offset belongs in{" "}
         <code>IfcMapConversion</code> only.
       </p>
       <Button
@@ -380,12 +371,11 @@ function BakedProjectedOriginNotice({
   return (
     <div className="space-y-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
       <p>
-        The local origin shown above —{" "}
+        <code>IfcSite.ObjectPlacement</code> carries{" "}
         <code>
           ({origin.x.toFixed(2)}, {origin.y.toFixed(2)}, {origin.z.toFixed(2)}) m
         </code>{" "}
-        — looks like projected coordinates baked into{" "}
-        <code>IfcSite.ObjectPlacement</code>. Per the{" "}
+        that looks like projected coordinates baked into the placement. Per the{" "}
         <a
           href="https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/HTML/schema/ifcrepresentationresource/lexical/ifcmapconversion.htm"
           className="underline transition-colors duration-100 hover:text-amber-950 focus-visible:text-amber-950 focus-visible:outline-1 focus-visible:outline-amber-700"

@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "react-aria-components";
 import { TargetIcon } from "@radix-ui/react-icons";
+import type { XYZ } from "#modules/helmert/solve";
 import type { RawPostalAddress, RawSite } from "#modules/ifc/worker";
 import { Row } from "./row";
 
@@ -15,8 +16,23 @@ function trimZeros(n: number, maxDecimals: number): string {
   return Number.parseFloat(n.toFixed(maxDecimals)).toString();
 }
 
+function formatPlacementLocation(location: XYZ | null): string {
+  if (!location) {
+    return "—";
+  }
+  const { x, y, z } = location;
+  return `(${trimZeros(x, 3)}, ${trimZeros(y, 3)}, ${trimZeros(z, 3)}) m`;
+}
+
 interface SiteSectionProps {
   raw: RawSite | null;
+  /**
+   * IfcSite.ObjectPlacement.RelativePlacement.Location in metres (worker
+   * boundary). Rendered as an `ObjectPlacement.Location` row alongside the
+   * other IfcSite attributes; null when the site or its placement is
+   * missing.
+   */
+  placementLocation: XYZ | null;
   /**
    * True when the file's IfcSite RefLat/RefLon falls outside the active
    * CRS area of use. Renders an inline warning under the lat/lon rows so
@@ -54,6 +70,7 @@ interface SiteSectionProps {
  */
 export function SiteSection({
   raw,
+  placementLocation,
   outsideBbox,
   activeCrsCode,
   projectLengthUnitShort,
@@ -92,25 +109,38 @@ export function SiteSection({
         <dl className="mt-2 space-y-1 border border-slate-100 bg-slate-50 px-3 py-2 text-xs">
           {/* <Row label="GlobalId" value={raw.globalId ?? "—"} /> */}
           <Row label="Name" value={raw.name ?? "—"} />
-          {raw.longName != null && <Row label="LongName" value={raw.longName} />}
+
+          {raw.longName != null && (
+            <Row label="LongName" value={raw.longName} />
+          )}
+
           {raw.description != null && (
             <Row label="Description" value={raw.description} wrap />
           )}
+
           {raw.objectType != null && (
             <Row label="ObjectType" value={raw.objectType} />
           )}
+
+          <Row
+            label="ObjectPlacement.Location"
+            value={formatPlacementLocation(placementLocation)}
+          />
+
           <Row
             label="RefLatitude"
             value={
               raw.refLatitude == null ? "—" : `${raw.refLatitude.toFixed(6)}°`
             }
           />
+
           <Row
             label="RefLongitude"
             value={
               raw.refLongitude == null ? "—" : `${raw.refLongitude.toFixed(6)}°`
             }
           />
+
           <Row
             label="RefElevation"
             value={
@@ -119,18 +149,20 @@ export function SiteSection({
                 : `${trimZeros(raw.refElevation / projectMetresPerUnit, 3)} ${projectLengthUnitShort}`
             }
           />
-          {outsideBbox
-            && raw.refLatitude != null
-            && raw.refLongitude != null && (
-            <p className="text-rose-700">
-              <span aria-hidden="true" className="mr-1">
-                ⚠
-              </span>
-              {activeCrsCode === null
-                ? "Outside the active CRS area of use; not shown on map."
-                : `Outside EPSG:${activeCrsCode} area of use; not shown on map.`}
-            </p>
-          )}
+
+          {outsideBbox &&
+            raw.refLatitude != null &&
+            raw.refLongitude != null && (
+              <p className="text-rose-700">
+                <span aria-hidden="true" className="mr-1">
+                  ⚠
+                </span>
+                {activeCrsCode === null
+                  ? "Outside the active CRS area of use; not shown on map."
+                  : `Outside EPSG:${activeCrsCode} area of use; not shown on map.`}
+              </p>
+            )}
+
           {raw.landTitleNumber != null && (
             <Row label="LandTitleNumber" value={raw.landTitleNumber} />
           )}
@@ -148,6 +180,7 @@ export function SiteSection({
             >
               <TargetIcon />
             </Button>
+
             <Tooltip
               placement="top"
               className="max-w-xs rounded bg-slate-900 px-2 py-1 text-xs text-white shadow-md data-entering:animate-in data-entering:fade-in data-exiting:animate-out data-exiting:fade-out"
@@ -181,18 +214,25 @@ function AddressRows({ address }: AddressRowsProps) {
       {address.purpose != null && (
         <Row label="Address · Purpose" value={address.purpose} />
       )}
+
       {address.userDefinedPurpose != null && (
         <Row
           label="Address · UserDefinedPurpose"
           value={address.userDefinedPurpose}
         />
       )}
+
       {address.description != null && (
         <Row label="Address · Description" value={address.description} wrap />
       )}
+
       {address.internalLocation != null && (
-        <Row label="Address · InternalLocation" value={address.internalLocation} />
+        <Row
+          label="Address · InternalLocation"
+          value={address.internalLocation}
+        />
       )}
+
       {address.addressLines != null && (
         <Row
           label="Address · Lines"
@@ -200,16 +240,23 @@ function AddressRows({ address }: AddressRowsProps) {
           wrap
         />
       )}
+
       {address.postalBox != null && (
         <Row label="Address · PostalBox" value={address.postalBox} />
       )}
-      {address.town != null && <Row label="Address · Town" value={address.town} />}
+
+      {address.town != null && (
+        <Row label="Address · Town" value={address.town} />
+      )}
+
       {address.region != null && (
         <Row label="Address · Region" value={address.region} />
       )}
+
       {address.postalCode != null && (
         <Row label="Address · PostalCode" value={address.postalCode} />
       )}
+
       {address.country != null && (
         <Row label="Address · Country" value={address.country} />
       )}
