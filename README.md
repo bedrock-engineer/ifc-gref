@@ -121,7 +121,7 @@ Follows the two relevant practice guides:
 
 ## Relation to the Flask app
 
-This is a rewrite of the Python/Flask app at
+This is a sort of rewrite of the Python/Flask app at
 <https://ifcgref.bk.tudelft.nl>, which continues to run. The original
 processes files server-side; this version does not upload anything.
 The solver logic and IFC version handling are modelled after the Flask
