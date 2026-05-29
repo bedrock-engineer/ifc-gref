@@ -11,79 +11,61 @@ Files are not uploaded, and no account is required.
 
 ## What it does
 
-A BIM model's local coordinates (project units from some arbitrary origin on the
-construction site) have to be placed in a real-world CRS before the model
-can be combined with geodata, planning documents, or other buildings. The
-IFC spec defines `IfcMapConversion` and `IfcProjectedCRS` for this; most
-authoring tools either don't fill them in or fill them in wrong.
+An IFC model's local coordinates (project units from some arbitrary origin on
+the construction site) have to be placed in a real-world CRS before the model
+can be combined with geodata, planning documents, or other buildings. The IFC
+spec defines `IfcMapConversion` and `IfcProjectedCRS` for this; most authoring
+tools either don't fill them in or fill them in wrong.
 
-This tool:
+The workflow:
 
-1. Opens your IFC file and reads whatever georeferencing is already
+1. **Open** an IFC file. The tool reads whatever georeferencing is already
    there: `IfcSite` lat/lon, `TrueNorth`, an existing `IfcMapConversion`
    (or the IFC4.3 `IfcRigidOperation`), a projected offset baked into the
-   site placement, or the IFC2X3 `ePSet_MapConversion` fallback.
-2. Lets you pick a target CRS from a searchable list of every projected,
-   compound, and vertical EPSG entry, bundled with the app.
-3. Lets you anchor the model on a live map: drop a reference point, or
-   paste a list of surveyed correspondences (engineering XYZ ↔ projected
-   XYZ) and solve a five-parameter Helmert fit.
-4. Shows the result on a real basemap (aerial / topo) with optional 3D
-   buildings (NL 3D BAG), terrain, and a live 3D preview of your model.
-5. Writes `IfcMapConversion` + `IfcProjectedCRS` into the file and hands
-   you the georeferenced IFC back as a download.
+   site placement, or the IFC2X3 `ePSet_MapConversion` fallback. A
+   Level-of-Georeferencing badge (LoGeoRef 10–50) tells you where the file
+   stands.
+2. **Pick a target CRS** from a searchable index of every projected,
+   compound, and vertical EPSG entry, bundled with the app. A separate
+   vertical-datum field feeds `IfcProjectedCRS.VerticalDatum`; compound codes
+   (e.g. `7415` = RD New + NAP) collapse it into one field.
+3. **Anchor the model** one of three ways: set the reference point from
+   `IfcSite`, pick a point on the map, or paste surveyed correspondences
+   (engineering XYZ ↔ projected XYZ) and solve a Helmert fit. Nudge easting /
+   northing / height and rotation by hand; the map updates as you type.
+4. **See it in place** on a real basemap (aerial / topo) with optional 3D BAG
+   buildings, AHN terrain, and a live Three.js preview of your model
+   transformed by the current Helmert parameters.
+5. **Save.** The writer rewrites `IfcMapConversion` + `IfcProjectedCRS`
+   in-browser and hands you the georeferenced IFC back as a download.
 
 ## Features
 
-- **Survey-point solver.** Paste correspondences from the clipboard
-  (Excel / CSV / semicolon-CSV / whitespace), solve least-squares with
-  Levenberg–Marquardt, and inspect per-point residuals on the map and in
-  a histogram. Single-point fallback for when you only have one known
-  reference.
-- **Three fit modes.** Encode the existing `IfcSite` reference alone,
-  refine it with extra survey points, or ignore the file and fit points
-  only.
-- **Live parameter editing.** Nudge easting / northing / height by hand,
-  and set rotation either as an angle (clockwise from grid north) or as
-  the raw `XAxisAbscissa` / `XAxisOrdinate` vector. The map updates as
-  you type.
-- **Baked-origin repair.** Detects the two common authoring bugs: a
-  projected offset baked into `IfcSite.ObjectPlacement` with no
-  `IfcMapConversion`, and the same offset double-counted in both. A
-  one-click button migrates or de-duplicates it.
-- **Vertical datum picker.** Separate horizontal CRS + vertical datum
-  inputs, written into `IfcProjectedCRS.VerticalDatum`. Compound EPSG
-  codes (e.g. 7415 = RD New + NAP) collapse this into a single field.
-- **MapUnit preservation.** Keeps the file's existing
-  `IfcProjectedCRS.MapUnit` across a save, recovers a malformed one, and
-  emits a fresh `IfcSIUnit METRE` only when none was set.
-- **Bundled CRS index.** Every projected, compound, and vertical EPSG
-  entry from `epsg-index` ships as a static asset. No runtime calls to
-  epsg.io; EPSG lookup works offline once the page is loaded.
-- **Precision grids on demand.** CRSs whose default proj4 string is
-  inaccurate (e.g. RD New, OSGB36) fetch a GeoTIFF datum-shift grid from
-  cdn.proj.org. The Target CRS card surfaces accuracy state and lets you
-  retry a failed grid load.
-- **Address search.** PDOK Locatieserver autocomplete for NL, with a
-  Nominatim fallback elsewhere, for placing the model when you have no
-  coordinate to anchor against.
-- **Maps.** Global OpenStreetMap basemap plus PDOK topo (BRT) and aerial
-  (Luchtfoto); add your own via a raster XYZ or MapLibre style URL; a
-  transparent-basemap toggle for screenshots. NL overlays: BGT
-  large-scale topography, Kadaster parcels, 2D BAG footprints, 3D BAG
-  buildings (LoD 2.2, 3D view only), and the model's own `IfcSpace`
-  boundaries. AHN5 terrain (5 m DEM via Mapterhorn) for drape and
-  elevation picks.
-- **2D ↔ 3D toggle.** See your model rendered in place on the globe via
-  Three.js inside a MapLibre custom layer, transformed live by the
-  current Helmert parameters.
+- **Survey-point solver.** Paste correspondences from the clipboard (Excel /
+  CSV / semicolon-CSV / whitespace) and solve least-squares with
+  Levenberg–Marquardt, with per-point residuals on the map and in a histogram.
+  Three fit modes: encode the existing `IfcSite` reference alone, refine it
+  with extra survey points, or fit points only. A single-point closed form
+  covers the case where you have just one known reference.
+- **Baked-origin repair.** Detects the two common authoring bugs (a projected
+  offset baked into `IfcSite.ObjectPlacement` with no `IfcMapConversion`, and
+  the same offset double-counted in both) and migrates or de-duplicates it in
+  one click.
+- **Precision grids on demand.** CRSs whose default proj4 string is inaccurate
+  (e.g. RD New, OSGB36) fetch a GeoTIFF datum-shift grid from cdn.proj.org. The
+  Target CRS card shows accuracy state and lets you retry a failed load. The
+  CRS index itself ships with the app, so EPSG lookup works offline.
+- **Address search.** PDOK Locatieserver autocomplete for NL, Nominatim
+  elsewhere, for placing the model when you have no coordinate to anchor to.
+- **Maps and overlays.** OpenStreetMap, PDOK topo (BRT) and aerial
+  (Luchtfoto), or your own raster XYZ / MapLibre style URL. NL overlays: BGT
+  topography, Kadaster parcels, 2D and 3D BAG, and the model's own `IfcSpace`
+  boundaries. A 2D ↔ 3D toggle renders the model on the globe.
 - **Sidecar files.** Export the active CRS, vertical datum, and Helmert
-  parameters as a small `.ifcgref.json`, then re-apply it later to
-  round-trip a placement without committing the IFC itself.
-- **Demo model.** MiniBIM preloaded so you can try the workflow without
-  having your own file to hand.
-- **Level of Georeferencing badge** (LoGeoRef 10–50) tells you what the
-  file currently achieves.
+  parameters as a small `.ifcgref.json`, then re-apply it to another file to
+  reuse a placement without re-solving.
+- **Demo model.** MiniBIM is preloaded so you can try the workflow without a
+  file of your own.
 
 ## Standards
 
@@ -95,9 +77,9 @@ Follows the two relevant practice guides:
 ## IFC versions
 
 - **IFC4 / IFC4 ADD1 / IFC4 ADD2 / IFC4.3.** Native `IfcMapConversion`
-  + `IfcProjectedCRS` read and write. On IFC4.3 it also reads the
-  translation-only `IfcRigidOperation` sibling, and writes
-  `IfcMapConversionScaled` when a non-unit vertical scale is needed.
+  - `IfcProjectedCRS` read and write. On IFC4.3 it also reads the
+    translation-only `IfcRigidOperation` sibling, and writes
+    `IfcMapConversionScaled` when a non-unit vertical scale is needed.
 - **IFC2X3.** Falls back to `ePSet_MapConversion` / `ePSet_ProjectedCRS`
   property sets, the convention used before IFC4 added first-class
   georef entities.
@@ -106,17 +88,14 @@ Follows the two relevant practice guides:
 
 - **Datum accuracy outside grid coverage.** We use proj4js with
   GeoTIFF-format datum-shift grids for the CRSs that need them (NL, UK,
-  …). Other CRSs use the default proj4 string, which is fine for typical
-  BIM georeferencing (sub-metre) but may lose precision vs. PROJ/pyproj
+  …). Other CRSs use the default proj4 string, which is fine for typical BIM georeferencing (sub-metre) but may lose precision vs. PROJ/pyproj
   on complex datums.
 - **No vertical-datum transforms.** Heights round-trip as a single
-  `OrthogonalHeight` offset. proj4js can't transform between vertical
-  datums (NAP ↔ ellipsoidal etc.); outside the Netherlands the vertical
-  story is "horizontal-only, vertical approximate."
+  `OrthogonalHeight` offset. proj4js can't transform between vertical datums (NAP ↔ ellipsoidal etc.).
 - **First-load needs internet.** The CRS index ships with the app, but
   precision grids are pulled from cdn.proj.org on first use of a covered
   CRS. Once cached they work offline.
-- **Large files.** web-ifc runs in a worker, but opening a multi-GB
+- **Large files.** web-ifc runs in a webworker, but opening a multi-GB
   IFC file is still constrained by browser memory.
 
 ## Relation to the Flask app
@@ -147,39 +126,14 @@ React 19 + TypeScript + Vite; Tailwind CSS v4; react-aria-components;
 with on-demand GeoTIFF precision grids using [geotiff.js](https://geotiffjs.github.io/); [Zod](https://zod.dev/) for boundary
 validation; [ml-levenberg-marquardt](https://github.com/mljs/levenberg-marquardt) for the Helmert solver; [MapLibre GL
 JS](https://maplibre.org/maplibre-gl-js/docs/) + Three.js for the map and 3D view; [3d-tiles-renderer](https://github.com/NASA-AMMOS/3DTilesRendererJS) for [3D BAG](https://docs.3dbag.nl/en/);
-neverthrow `Result` for error handling.
+[neverthrow](https://github.com/supermacro/neverthrow) `Result` for error handling.
 
-### Repository Layout
+### Layout
 
-```
-src/
-  modules/             pure-TS domain logic, no React (#modules/* alias)
-    ifc/
-      facade.ts        high-level IFC ops, delegates to the worker
-      lo-geo-ref.ts    Level of Georeferencing classification
-      worker/          Comlink-exposed Web Worker (web-ifc inside)
-        georef/        IfcMapConversion + IfcProjectedCRS, schema-split
-        metadata.ts    schema, site, units, local origin, true north
-        footprint.ts   convex-hull extraction
-        meshes.ts      triangle extraction for 3D
-    crs/               proj4js wrapper, manifest loader, transforms
-    helmert/           least-squares solver + survey-point clipboard parse
-    units/             IFC length-unit conversion + display formatting
-  lib/                 app-level glue: logging, PDOK/Nominatim, validators,
-                       CRS hooks
-  state/               app state: workspace orchestration + georef-status
-                       discriminated union (#state/* alias)
-  components/
-    map/               MapLibre init, custom layers, controls, hooks
-    sidebar/           cards for file info, CRS, anchor, survey points, save
-    workspace/         workspace-level orchestration hooks
-  worker/              ifc-worker.ts entrypoint (re-exports modules/ifc/worker)
-```
-
-All IFC / CRS / Helmert / units logic lives in `src/modules/`; React
-components call into it via the worker facade and module barrels.
-`src/lib/` holds the smaller, app-level helpers that don't fit a domain
-module, and `src/state/` holds the shared workspace state.
+All IFC / CRS / Helmert / units logic lives as pure TypeScript in
+`src/modules/` (web-ifc runs in a Web Worker under `modules/ifc/worker`);
+React components in `src/components/` call into it via the worker facade and
+module barrels. `src/lib/` holds smaller app-level helpers, and `src/state/` holds the shared workspace state.
 
 ## Contributing
 
