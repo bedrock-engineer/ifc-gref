@@ -5,8 +5,8 @@
  * any vendor-specific escaping are preserved.
  *
  * Why not web-ifc: `wasmModule.WriteHeaderLine` *appends* a second
- * FILE_NAME line (probed 2026-05; see scripts/probe-write-header-line.mjs)
- * and its serialiser also rewrites backslashes, so even a
+ * FILE_NAME line and its serialiser also
+ * rewrites backslashes, so even a
  * GetHeaderLine → reserialise round-trip would silently mutate unchanged
  * slots. We splice bytes instead. The STEP HEADER lives at the file start
  * and is tiny — 16 KB is plenty.
