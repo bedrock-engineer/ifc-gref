@@ -1,13 +1,10 @@
 # IFC Georeferencer
 
-Georeference an IFC (BIM) file in your browser. Place the model on a map,
-solve the Helmert transform from your survey points, and download a file
-with `IfcMapConversion` + `IfcProjectedCRS` written in.
+Georeference an IFC file in your browser. Place the model on a map or
+enter your survey points, and download a georeferenced IFC file.
 
 **Your file never leaves your machine.** Everything runs client-side.
 Files are not uploaded, and no account is required.
-
-> Status: beta. Usable end-to-end, some rough edges.
 
 ## What it does
 
@@ -16,6 +13,14 @@ the construction site) have to be placed in a real-world CRS before the model
 can be combined with geodata, planning documents, or other buildings. The IFC
 spec defines `IfcMapConversion` and `IfcProjectedCRS` for this; most authoring
 tools either don't fill them in or fill them in wrong.
+
+Bridging Geo and BIM today usually takes a specialist and a workflow that
+mainstream authoring tools don't support, which makes georeferencing
+impractical on small and medium projects. This tool aims to make the step
+routine: open a file, place it, save it, with the right IFC entities written
+in. It's built for the buildingSMART NL
+[Georefereren IFC](https://www.buildingsmart.nl/projecten/georefereren-ifc)
+initiative.
 
 The workflow:
 
@@ -145,6 +150,7 @@ Apache License Version 2.0.
 
 ## Credits
 
-Developed by [Bedrock.engineer](https://bedrock.engineer) for [buildingSMART Nederlands](https://www.buildingsmart.nl/).
+Developed by [Bedrock.engineer](https://bedrock.engineer) for the
+[buildingSMART Nederland](https://www.buildingsmart.nl/) [Georefereren IFC](https://www.buildingsmart.nl/projecten/georefereren-ifc).
 
-Inspiration take from the original [IfcGref app](https://ifcgref.bk.tudelft.nl/) by [Amir Hakim](https://github.com/amiroo4) for the TU Delft 3D Geoinformation research group.
+Inspiration taken from the original [IfcGref app](https://ifcgref.bk.tudelft.nl/) by [Amir Hakim](https://github.com/amiroo4) for the TU Delft 3D Geoinformation research group.
